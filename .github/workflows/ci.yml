@@ -45,7 +45,7 @@ jobs:
       - run: npx playwright test e2e/security-headers.spec.ts
         env:
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: build-time-placeholder
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: build-time-placeholder
           DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/placeholder
 
   # Only runs once a real Supabase test project's connection string is stored as a repo secret —
@@ -96,5 +96,5 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL_DEV || 'http://localhost:54321' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY_DEV || 'build-time-placeholder' }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_DEV || 'build-time-placeholder' }}
           DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/placeholder

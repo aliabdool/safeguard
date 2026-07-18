@@ -29,7 +29,7 @@ npm run dev                  # http://localhost:3000
 | Variable | Where it comes from | Notes |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project → Settings → API | Public |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project → Settings → API | Public — safe, meaningless without RLS |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase project → Settings → API (the "publishable key", `sb_publishable_...`) | Public — safe, meaningless without RLS |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase project → Settings → API | **Secret.** Never `NEXT_PUBLIC_*`, never client-imported (enforced by `src/server/auth/service-role.ts` + ESLint) |
 | `DATABASE_URL` | Supabase project → Settings → Database → Connection pooling (transaction mode) | Used by Drizzle + migrations |
 | `NEXT_PUBLIC_SITE_URL` | Your deployed URL, or `http://localhost:3000` locally | Used for password-reset redirect links |
