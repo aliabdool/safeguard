@@ -121,44 +121,49 @@ is the correct place for that gate to sit.
 ## 6. Definition-of-done tracker
 
 Updated at the end of each phase against the completion criteria in `product-requirements.md` §6.
+"Built, unverified" means the code path is complete and passes static checks (typecheck/lint/unit
+tests/build) but has not been run against a live Supabase project — see §3 for why.
 
-| Criterion | Status after Phase 0 |
+| Criterion | Status after Phase 1 |
 |---|---|
-| Users can register / accept invitations | Not started |
-| Admin can approve users and assign roles | Not started |
-| Users can log in and log out | Not started |
-| Records persist in Supabase | Not started (schema designed, not deployed) |
-| Documents/photos upload successfully | Not started |
-| Property/department restriction enforced | Designed (RLS + app layer), not built |
-| Medical data separately protected | Designed, not built |
-| Incidents pass through full workflow | Not started |
-| Audits and findings work | Not started |
-| CAPA verify/close works (owner ≠ verifier) | Designed, not built |
-| Evidence reused across controls/KPIs | Designed, not built |
-| Dashboards calculate from live records | Designed, not built |
-| KPI calculations reconcile to source | Designed, not built |
-| Audit log captures material activity | Designed, not built |
-| Critical automated tests pass | N/A — no code yet |
-| Deployable from a clean repository | N/A — no code yet |
+| Users can register / accept invitations | Built, unverified — `/register` → Supabase Auth `signUp` → `on_auth_user_created` trigger creates `pending_approval` profile |
+| Admin can approve users and assign roles | Built, unverified — `/admin/registrations`, approve/reject server actions, role+property+department+medical-permission assignment in one transaction |
+| Users can log in and log out | Built, unverified — `/login`, `/logout` via `signOutAction`, secure cookie session via `@supabase/ssr` |
+| Records persist in Supabase | Schema + migrations complete (50 tables), not yet applied to a live project |
+| Documents/photos upload successfully | Not started (Phase 2/3) |
+| Property/department restriction enforced | Built, unverified — RLS policies (`drizzle/0001_auth_helpers_and_rls.sql`) + app-layer `getAuthContext()`/`requireRole()`; unit-tested (13 passing tests on the pure permission logic); RLS integration test written (`src/db/rls.integration.test.ts`), not yet run |
+| Medical data separately protected | Built, unverified — separate `medical_records`/`medical_attachments` tables + bucket + RLS keyed only on `has_medical_permission()`, explicitly excluding Super Admin by default; named integration test asserts this |
+| Incidents pass through full workflow | Not started (Phase 2) — schema exists, no UI/actions yet |
+| Audits and findings work | Not started (Phase 3) — schema exists |
+| CAPA verify/close works (owner ≠ verifier) | Not started (Phase 2) — schema + RLS check constraint exist, no UI/actions yet |
+| Evidence reused across controls/KPIs | Not started (Phase 3) — schema exists |
+| Dashboards calculate from live records | Not started (Phase 4) — placeholder dashboard only |
+| KPI calculations reconcile to source | Not started (Phase 4) — KPI catalogue seeded, no calculation engine yet |
+| Audit log captures material activity | Partial — `writeAuditLog()` wired into auth + admin approval/suspension/reactivation/session-revocation flows; not yet wired into incident/CAPA/audit/document flows (those don't exist yet) |
+| Critical automated tests pass | `npm run lint`, `npm run typecheck`, `npm run test` (13/13 unit tests), `npm run build` (Cloudflare-targetable Next 16 build) all pass. Integration (RLS) and E2E suites are written but require a live Supabase project to execute |
+| Deployable from a clean repository | `wrangler.jsonc` + `open-next.config.ts` present for all 3 hosted environments; `wrangler deploy` not yet run — needs a Cloudflare account/API token (open item, see §5) |
 
 ## 7. First Super Administrator bootstrap procedure (for when a real project exists)
 
 1. Create the Supabase project (Production or Development as applicable).
-2. Run all migrations (`pnpm drizzle-kit migrate` against the project's connection string) —
-   creates schema, RLS policies, and seeds `roles`/`frameworks`.
+2. From `apps/web`, with `DATABASE_URL` set to the project's connection string, run
+   `npm run db:migrate` (applies `drizzle/0000_init_schema.sql` and
+   `drizzle/0001_auth_helpers_and_rls.sql`) then `npm run db:seed` (roles, frameworks,
+   departments, starter control library, KPI catalogue).
 3. Have the intended Super Administrator complete normal registration through the app (email +
    password, email verification) — this creates their `auth.users` row and a `profiles` row with
    `status = 'pending_approval'`, same as any other user; there is no back-door signup path.
-4. Run the provided one-time bootstrap SQL (`scripts/bootstrap-super-admin.sql`, parameterized by
-   email) **once**, directly against the project via the Supabase SQL editor or `psql` with the
-   service-role/postgres connection — it sets that single `profiles.status = 'active'` and inserts
-   the `SUPER_ADMIN` `user_roles` row. This script is intentionally not exposed through the
-   application UI/API (no in-app path can self-grant Super Administrator).
-5. From then on, all further users are approved through the normal admin console by that Super
-   Administrator — the bootstrap script is a one-time cold-start step, not a repeatable admin
-   function.
+4. Run the provided one-time bootstrap SQL (`apps/web/scripts/bootstrap-super-admin.sql`,
+   parameterized by email) **once**, directly against the project via the Supabase SQL editor or
+   `psql` with the service-role/postgres connection — it sets that single
+   `profiles.status = 'active'` and inserts the `SUPER_ADMIN` `user_roles` row. This script is
+   intentionally not exposed through the application UI/API (no in-app path can self-grant Super
+   Administrator).
+5. From then on, all further users are approved through the normal admin console
+   (`/admin/registrations`) by that Super Administrator — the bootstrap script is a one-time
+   cold-start step, not a repeatable admin function.
 
-## 8. Recommended Phase 1 tasks (execution order)
+## 8. Recommended Phase 1 tasks (execution order) — completed
 
 1. `pnpm create next-app` scaffold (App Router, TS strict, Tailwind), shadcn/ui init.
 2. Drizzle setup (`drizzle-kit`, `drizzle-orm`, Postgres driver), schema files per
