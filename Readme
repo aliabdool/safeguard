@@ -1,0 +1,11 @@
+# Sunlife SafeGuard
+
+Full-stack Health and Safety Management, Audit, Assurance, Evidence and Reporting Application.
+
+Technology:
+- Next.js
+- TypeScript
+- Supabase PostgreSQL
+- Supabase Auth
+- Supabase Storage
+- Cloudflare Workers
