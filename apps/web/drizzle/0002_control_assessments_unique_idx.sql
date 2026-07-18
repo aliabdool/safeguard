@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "control_assessments_unique_idx" ON "control_assessments" USING btree ("control_id","property_id","department_id","period_label","dimension");

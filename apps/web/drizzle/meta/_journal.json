@@ -15,6 +15,13 @@
       "when": 1784376604769,
       "tag": "0001_auth_helpers_and_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784378656419,
+      "tag": "0002_control_assessments_unique_idx",
+      "breakpoints": true
     }
   ]
 }

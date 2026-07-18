@@ -6,6 +6,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -57,24 +58,40 @@ export const legalRequirementDetails = pgTable("legal_requirement_details", {
   contentStatus: text("content_status").notNull().default("starter_set_needs_legal_review"),
 });
 
-export const controlAssessments = pgTable("control_assessments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  controlId: uuid("control_id")
-    .notNull()
-    .references(() => controls.id, { onDelete: "cascade" }),
-  propertyId: uuid("property_id")
-    .notNull()
-    .references(() => properties.id, { onDelete: "restrict" }),
-  departmentId: uuid("department_id").references(() => departments.id, {
-    onDelete: "restrict",
-  }),
-  periodLabel: text("period_label").notNull(),
-  dimension: maturityDimensionEnum("dimension").notNull(),
-  maturityScore: integer("maturity_score").notNull(),
-  isCriticalGap: boolean("is_critical_gap").notNull().default(false),
-  assessedBy: uuid("assessed_by")
-    .notNull()
-    .references(() => profiles.id),
-  assessedAt: timestamp("assessed_at", { withTimezone: true }).notNull().defaultNow(),
-  notes: text("notes"),
-});
+export const controlAssessments = pgTable(
+  "control_assessments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    controlId: uuid("control_id")
+      .notNull()
+      .references(() => controls.id, { onDelete: "cascade" }),
+    propertyId: uuid("property_id")
+      .notNull()
+      .references(() => properties.id, { onDelete: "restrict" }),
+    departmentId: uuid("department_id").references(() => departments.id, {
+      onDelete: "restrict",
+    }),
+    periodLabel: text("period_label").notNull(),
+    dimension: maturityDimensionEnum("dimension").notNull(),
+    maturityScore: integer("maturity_score").notNull(),
+    isCriticalGap: boolean("is_critical_gap").notNull().default(false),
+    assessedBy: uuid("assessed_by")
+      .notNull()
+      .references(() => profiles.id),
+    assessedAt: timestamp("assessed_at", { withTimezone: true }).notNull().defaultNow(),
+    notes: text("notes"),
+  },
+  (table) => [
+    // Backstop only for the department_id IS NOT NULL case — Postgres treats NULLs as distinct
+    // under a unique index, so property-wide (department_id IS NULL) re-assessment in the same
+    // period is deduplicated at the application layer instead (select-then-update-or-insert in
+    // the server action), not relied on here. See docs/database-model.md §5.
+    uniqueIndex("control_assessments_unique_idx").on(
+      table.controlId,
+      table.propertyId,
+      table.departmentId,
+      table.periodLabel,
+      table.dimension,
+    ),
+  ],
+);
