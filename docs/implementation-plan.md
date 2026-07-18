@@ -124,23 +124,23 @@ Updated at the end of each phase against the completion criteria in `product-req
 "Built, unverified" means the code path is complete and passes static checks (typecheck/lint/unit
 tests/build) but has not been run against a live Supabase project — see §3 for why.
 
-| Criterion | Status after Phase 1 |
+| Criterion | Status after Phase 2 |
 |---|---|
 | Users can register / accept invitations | Built, unverified — `/register` → Supabase Auth `signUp` → `on_auth_user_created` trigger creates `pending_approval` profile |
 | Admin can approve users and assign roles | Built, unverified — `/admin/registrations`, approve/reject server actions, role+property+department+medical-permission assignment in one transaction |
 | Users can log in and log out | Built, unverified — `/login`, `/logout` via `signOutAction`, secure cookie session via `@supabase/ssr` |
 | Records persist in Supabase | Schema + migrations complete (50 tables), not yet applied to a live project |
-| Documents/photos upload successfully | Not started (Phase 2/3) |
-| Property/department restriction enforced | Built, unverified — RLS policies (`drizzle/0001_auth_helpers_and_rls.sql`) + app-layer `getAuthContext()`/`requireRole()`; unit-tested (13 passing tests on the pure permission logic); RLS integration test written (`src/db/rls.integration.test.ts`), not yet run |
-| Medical data separately protected | Built, unverified — separate `medical_records`/`medical_attachments` tables + bucket + RLS keyed only on `has_medical_permission()`, explicitly excluding Super Admin by default; named integration test asserts this |
-| Incidents pass through full workflow | Not started (Phase 2) — schema exists, no UI/actions yet |
+| Documents/photos upload successfully | Built, unverified — `src/server/storage` signed-upload/download flow (size/MIME/extension validation, server-side checksum on confirm), wired into incident attachments (`incident-evidence` bucket); document-library upload (Phase 3) still pending |
+| Property/department restriction enforced | Built, unverified — RLS policies + app-layer checks on every new incident/CAPA/investigation/medical action, not just auth/admin; unit-tested (13 passing tests); RLS integration test written, not yet run |
+| Medical data separately protected | Built, unverified — `/incidents/[id]/medical` gated by `requireMedicalPermission()` at both the page and the server action, with a friendly in-app denial message (not a crash) for users who lack the grant; audit log records the access event without clinical content |
+| Incidents pass through full workflow | Built, unverified — full Report → Investigate → Corrective Action → Verify → Close status machine (`advanceIncidentStatusAction`), one-step-at-a-time enforced, closing blocked while linked CAPAs are open; investigation (five-whys, causes, witnesses, approvals) and photo/document attachment all implemented |
 | Audits and findings work | Not started (Phase 3) — schema exists |
-| CAPA verify/close works (owner ≠ verifier) | Not started (Phase 2) — schema + RLS check constraint exist, no UI/actions yet |
+| CAPA verify/close works (owner ≠ verifier) | Built, unverified — enforced independently at three points: form validation (owner ≠ verification owner at creation), `verifyCapaAction` (owner cannot verify their own action), `closeCapaAction` (closer cannot be the owner, requires prior `verified` status) — plus the RLS check constraint as a fourth, DB-level backstop |
 | Evidence reused across controls/KPIs | Not started (Phase 3) — schema exists |
 | Dashboards calculate from live records | Not started (Phase 4) — placeholder dashboard only |
 | KPI calculations reconcile to source | Not started (Phase 4) — KPI catalogue seeded, no calculation engine yet |
-| Audit log captures material activity | Partial — `writeAuditLog()` wired into auth + admin approval/suspension/reactivation/session-revocation flows; not yet wired into incident/CAPA/audit/document flows (those don't exist yet) |
-| Critical automated tests pass | `npm run lint`, `npm run typecheck`, `npm run test` (13/13 unit tests), `npm run build` (Cloudflare-targetable Next 16 build) all pass. Integration (RLS) and E2E suites are written but require a live Supabase project to execute |
+| Audit log captures material activity | Now also wired into incident creation/status changes, attachment uploads, investigation completion/approval/rejection, medical-record access, CAPA creation/verification/closure — in addition to the Phase 1 auth/admin events |
+| Critical automated tests pass | `npm run lint`, `npm run typecheck`, `npm run test` (13/13 unit tests), `npm run build` all pass with 17 routes (4 new from Phase 1's 10) |
 | Deployable from a clean repository | `wrangler.jsonc` + `open-next.config.ts` present for all 3 hosted environments; `wrangler deploy` not yet run — needs a Cloudflare account/API token (open item, see §5) |
 
 ## 7. First Super Administrator bootstrap procedure (for when a real project exists)
