@@ -63,6 +63,21 @@ Migration files, in order:
 - `drizzle/0002_control_assessments_unique_idx.sql` — unique index backing
   re-assess-in-same-period-updates-not-duplicates behaviour
 
+### No raw Postgres access from where you're running this?
+
+`db:migrate` and `db:seed` both open a direct Postgres TCP connection (via `postgres-js`), which
+some sandboxed/managed environments (this one included) block at the network egress layer —
+HTTPS-only. If `npm run db:migrate` hangs or fails with a connection timeout, run the same SQL
+through the **Supabase dashboard → SQL Editor** instead (plain HTTPS from your browser, no direct
+DB connection required), pasting each file in order and running it:
+
+1. `drizzle/0000_init_schema.sql`
+2. `drizzle/0001_auth_helpers_and_rls.sql`
+3. `drizzle/0002_control_assessments_unique_idx.sql`
+4. `scripts/seed.sql` — a hand-maintained SQL mirror of `src/db/seed.ts`'s reference data
+   (roles, frameworks, departments, two demo properties, a starter control library, the 38-row
+   KPI catalogue). Idempotent (`ON CONFLICT DO NOTHING` throughout), same as the TS version.
+
 ## Demonstration users
 
 No demo users are seeded — `db:seed` only inserts reference/catalogue data (roles, frameworks,

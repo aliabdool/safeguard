@@ -62,6 +62,19 @@ Context: needed for FY/YTD comparison logic; not specified in the brief. Decisio
 performance** (`property_id`/`department_id` duplicated onto child tables). Rationale in
 `database-model.md` preamble. Status: accepted.
 
+**ADR-0006 — `scripts/seed.sql` as a raw-SQL mirror of `src/db/seed.ts`, for environments without
+raw Postgres TCP egress.** Context: once a real Supabase project was connected, `npm run
+db:migrate`/`db:seed` (both open a direct `postgres-js` TCP connection) failed in this session's
+sandboxed execution environment — its egress proxy is HTTPS-only and explicitly does not support
+raw-TCP database connections (confirmed via the proxy's own documented failure classes, not a
+transient error). Decision: hand-author `apps/web/scripts/seed.sql`, functionally identical to
+`seed.ts` (same rows, same `ON CONFLICT DO NOTHING` idempotency keyed on the same unique columns),
+so migrations + seed data can be applied entirely through the Supabase dashboard's SQL Editor
+(plain HTTPS, run from the user's own browser) as a documented fallback path — see README.md
+"No raw Postgres access from where you're running this?". `seed.ts` remains the source of truth
+for anyone with direct DB access; `seed.sql` must be kept in sync by hand if `seed.ts` changes.
+Status: accepted.
+
 ## 3. What could not be completed without external accounts/credentials
 
 Per the explicit pause condition ("a required secret, domain, API key or external account is
