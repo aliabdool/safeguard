@@ -1,3 +1,6 @@
+import Link from "next/link";
+
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -19,28 +22,32 @@ export default async function DashboardPage() {
           {ctx?.propertyIds.length ?? 0}
         </p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Live KPI dashboards land in Phase 4</CardTitle>
-          <CardDescription>
-            This placeholder confirms the auth + permission pipeline is working end to end:
-            session resolved server-side, profile status checked, roles/property/department
-            grants loaded from Supabase Postgres via Drizzle under RLS.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-muted-foreground text-sm">
-          {ctx && ctx.propertyIds.length === 0 && !ctx.roleCodes.length ? (
-            <p>
-              You have no role or property assigned yet. An administrator needs to grant access
-              before incident, audit, document or KPI data becomes visible to you.
-            </p>
-          ) : (
-            <p>
-              KPI catalogue, dashboards and framework views are implemented in later phases.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      {ctx && ctx.propertyIds.length === 0 && !ctx.roleCodes.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>No access assigned yet</CardTitle>
+            <CardDescription>
+              An administrator needs to grant you a role and at least one property before
+              incident, audit, document or KPI data becomes visible.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Live KPI dashboards</CardTitle>
+            <CardDescription>
+              Every figure is computed from Supabase records at request time, with
+              financial-year and same-period year-to-date comparisons.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link href="/kpis">Open KPI dashboards</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

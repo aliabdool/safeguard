@@ -124,24 +124,43 @@ Updated at the end of each phase against the completion criteria in `product-req
 "Built, unverified" means the code path is complete and passes static checks (typecheck/lint/unit
 tests/build) but has not been run against a live Supabase project — see §3 for why.
 
-| Criterion | Status after Phase 3 |
+| Criterion | Status after Phase 4 |
 |---|---|
 | Users can register / accept invitations | Built, unverified — `/register` → Supabase Auth `signUp` → `on_auth_user_created` trigger creates `pending_approval` profile |
 | Admin can approve users and assign roles | Built, unverified — `/admin/registrations`, approve/reject server actions, role+property+department+medical-permission assignment in one transaction |
 | Users can log in and log out | Built, unverified — `/login`, `/logout` via `signOutAction`, secure cookie session via `@supabase/ssr` |
 | Records persist in Supabase | Schema + migrations complete (50 tables + 1 index migration), not yet applied to a live project |
-| Documents/photos upload successfully | Built, unverified — signed-upload flow now covers incidents (`incident-evidence`) AND the central document library (`controlled-documents`); document versioning (new version never overwrites an approved one), approval (uploader ≠ approver enforced), and evidence-link reuse across controls/KPIs/audits/findings/CAPA all implemented |
-| Property/department restriction enforced | Built, unverified — RLS policies + app-layer checks on every new incident/CAPA/investigation/medical/audit/finding/control-assessment action; unit-tested (24 passing tests); RLS integration test written, not yet run |
+| Documents/photos upload successfully | Built, unverified — signed-upload flow covers incidents and the central document library, versioning, approval (uploader ≠ approver), evidence-link reuse |
+| Property/department restriction enforced | Built, unverified — RLS policies + app-layer checks on every mutating action across all modules including KPI snapshots; unit-tested (40 passing tests); RLS integration test written, not yet run |
 | Medical data separately protected | Built, unverified — unchanged from Phase 2 |
 | Incidents pass through full workflow | Built, unverified — unchanged from Phase 2 |
-| Audits and findings work | Built, unverified — audit programme + execution (planned → in_progress → reporting → closed), team assignment, checklist items linked to controls, per-dimension checklist assessments, findings (5 classifications) with a separate status machine (open → action_assigned → verified → closed) that blocks closure while linked CAPA actions remain open, and a one-click path from a finding to a CAPA action (`sourceType='audit_finding'`) |
-| CAPA verify/close works (owner ≠ verifier) | Built, unverified — unchanged from Phase 2, now also exercised from the audit-finding path |
-| Evidence reused across controls/KPIs | Built, unverified — `evidence_links` implemented with all 6 linked-entity types, evidence level, purpose, page/section, reporting period; one approved document version can back multiple links, matching "upload once, approve once, use many times" |
-| Dashboards calculate from live records | Not started (Phase 4) — placeholder dashboard only |
-| KPI calculations reconcile to source | Not started (Phase 4) — KPI catalogue seeded, no calculation engine yet |
-| Audit log captures material activity | Now also wired into document upload/approval, control-assessment score changes, audit/finding creation and status changes |
-| Critical automated tests pass | `npm run lint`, `npm run typecheck`, `npm run test` (24/24 unit tests — includes the critical-gap-override maturity logic), `npm run build` all pass with 30 routes |
+| Audits and findings work | Built, unverified — unchanged from Phase 3 |
+| CAPA verify/close works (owner ≠ verifier) | Built, unverified — unchanged from Phase 2/3 |
+| Evidence reused across controls/KPIs | Built, unverified — unchanged from Phase 3 |
+| Dashboards calculate from live records | Built, unverified — `/kpis` computes every tile from live Supabase queries at request time (never hard-coded); 13 of the 38 catalogued KPIs are wired to real calculation functions spanning count/sum/rollup shapes across all three classifications (leading/lagging/assurance), the other 25 show their catalogue definition with an explicit "not yet implemented" state rather than a fabricated number |
+| KPI calculations reconcile to source | Built, unverified — every calculation returns the actual matched record IDs as `includedRecordIds`, persists an append-only snapshot to `kpi_calculations` on every view, and the "View calculation" page renders formula/source tables/included-record count/data-quality status/target-warning-critical thresholds/evidence requirements together so the number is never a black box |
+| Audit log captures material activity | Unchanged from Phase 3 — KPI calculation itself is not separately audit-logged (it's a read/derive operation over already-audited source records, not a state change); noted as a design decision, not an oversight |
+| Critical automated tests pass | `npm run lint`, `npm run typecheck`, `npm run test` (40/40 unit tests — adds financial-year/YTD-clipping and RAG-status logic to the Phase 3 suite), `npm run build` all pass with 32 routes |
 | Deployable from a clean repository | `wrangler.jsonc` + `open-next.config.ts` present for all 3 hosted environments; `wrangler deploy` not yet run — needs a Cloudflare account/API token (open item, see §5) |
+
+### 6.2 KPI engine design notes
+
+- **FY/YTD comparison** (`src/server/kpi/period.ts`, pure + unit-tested): default financial year
+  1 July–30 June (ADR-0004, still pending your confirmation). When the current FY is incomplete,
+  the comparison period is automatically clipped to the same elapsed span — the "Showing
+  year-to-date" banner in `docs/kpi-catalogue.md` §4 is implemented, not just documented.
+- **RAG status** (`src/server/kpi/rag.ts`, pure + unit-tested): direction-aware
+  (`lower_better`/`higher_better`), driven entirely by each KPI's own
+  `target`/`warningThreshold`/`criticalThreshold` — never a hard-coded per-KPI threshold in the UI.
+- **13 implemented KPIs**: `TOTAL_INCIDENTS`, `EMPLOYEE_INCIDENTS`, `CONTRACTOR_INCIDENTS`,
+  `GUEST_INCIDENTS`, `NEAR_MISSES`, `UNSAFE_CONDITIONS`, `HIGH_POTENTIAL`, `HOSPITAL_REFERRALS`,
+  `INCIDENT_COST`, `OPEN_CRIT_MAJOR_FINDINGS`, `CAPA_ON_TIME`, `ISO45001_READINESS`,
+  `LEGAL_COMPLIANCE` — deliberately chosen to exercise every calculation shape (period count,
+  period sum, point-in-time count, ratio, framework rollup) so extending to the remaining 25 is
+  additive (one function per KPI in the same shape), not an engine change.
+- **`ISO45001_READINESS`/`LEGAL_COMPLIANCE`** call the exact same
+  `computeFrameworkRollup()` used by `/framework/[frameworkCode]`, so the KPI tile and the
+  framework page can never silently disagree.
 
 ### 6.1 Note on the master-control-library rollup implementation (ADR-0002)
 
