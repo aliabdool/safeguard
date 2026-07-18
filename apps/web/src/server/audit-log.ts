@@ -7,6 +7,7 @@ export type AuditLogEventType =
   | "login"
   | "logout"
   | "failed_login"
+  | "password_reset_requested"
   | "registration"
   | "registration_approved"
   | "registration_rejected"

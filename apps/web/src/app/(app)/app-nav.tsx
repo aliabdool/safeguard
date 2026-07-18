@@ -57,11 +57,22 @@ export function AppNav({ roleCodes }: { roleCodes: RoleCode[] }) {
           </Link>
         ) : null}
       </nav>
-      <form action={signOutAction}>
-        <Button type="submit" variant="ghost" size="sm">
-          Log out
-        </Button>
-      </form>
+      <div className="flex items-center gap-2">
+        <Link
+          href="/account"
+          className={cn(
+            "text-muted-foreground hover:bg-accent hover:text-accent-foreground rounded-md px-3 py-1.5 text-sm",
+            pathname.startsWith("/account") && "bg-accent text-accent-foreground",
+          )}
+        >
+          Account
+        </Link>
+        <form action={signOutAction}>
+          <Button type="submit" variant="ghost" size="sm">
+            Log out
+          </Button>
+        </form>
+      </div>
     </header>
   );
 }

@@ -14,6 +14,7 @@ import {
   documentVersions,
   documents,
   evidenceLinks,
+  scheduledReminders,
 } from "@/db/schema";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextDocumentNumber } from "@/server/documents/number";
@@ -183,6 +184,15 @@ export async function createDocumentVersionAction(input: {
     entityType: "document_versions",
     entityId: version!.id,
   });
+
+  if (parsed.reviewDate) {
+    await db.insert(scheduledReminders).values({
+      relatedEntityType: "document_versions",
+      relatedEntityId: version!.id,
+      remindAt: new Date(parsed.reviewDate),
+      reminderType: "document_review_due",
+    });
+  }
 
   revalidatePath(`/documents/${parsed.documentId}`);
   return version!.id;

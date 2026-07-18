@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { getDb } from "@/db";
-import { capaActions, capaVerifications } from "@/db/schema";
+import { capaActions, capaVerifications, scheduledReminders } from "@/db/schema";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextCapaActionNumber } from "@/server/capa/number";
 import { hasPropertyAccess, requireActiveUser, requireRole } from "@/server/permissions";
@@ -111,6 +111,16 @@ export async function createCapaAction(
     propertyId: data.propertyId,
     departmentId: data.departmentId || null,
     newValue: { sourceType: data.sourceType, sourceId: data.sourceId, status: "open" },
+  });
+
+  // Remind the owner 3 days before the due date — processed by /api/cron/reminders.
+  const remindAt = new Date(data.dueDate);
+  remindAt.setUTCDate(remindAt.getUTCDate() - 3);
+  await db.insert(scheduledReminders).values({
+    relatedEntityType: "capa_actions",
+    relatedEntityId: created!.id,
+    remindAt,
+    reminderType: "capa_due_soon",
   });
 
   revalidatePath("/capa");

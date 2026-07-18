@@ -177,3 +177,5 @@ export async function calculateKpi(
 export function isKpiImplemented(kpiCode: string): boolean {
   return kpiCode in REGISTRY;
 }
+
+export const REGISTERED_KPI_CODES: readonly string[] = Object.keys(REGISTRY);

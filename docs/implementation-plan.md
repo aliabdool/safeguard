@@ -124,24 +124,50 @@ Updated at the end of each phase against the completion criteria in `product-req
 "Built, unverified" means the code path is complete and passes static checks (typecheck/lint/unit
 tests/build) but has not been run against a live Supabase project — see §3 for why.
 
-| Criterion | Status after Phase 4 |
+| Criterion | Status after Phase 5 |
 |---|---|
-| Users can register / accept invitations | Built, unverified — `/register` → Supabase Auth `signUp` → `on_auth_user_created` trigger creates `pending_approval` profile |
+| Users can register / accept invitations | Built, unverified — `/register` → Supabase Auth `signUp` → `on_auth_user_created` trigger creates `pending_approval` profile. Registration and login are now also rate-limited (app layer, IP-keyed) |
 | Admin can approve users and assign roles | Built, unverified — `/admin/registrations`, approve/reject server actions, role+property+department+medical-permission assignment in one transaction |
-| Users can log in and log out | Built, unverified — `/login`, `/logout` via `signOutAction`, secure cookie session via `@supabase/ssr` |
+| Users can log in and log out | Built, unverified — `/login`, `/logout` via `signOutAction`, secure cookie session via `@supabase/ssr`; login rate-limited after 10 failed attempts/15 min per IP |
 | Records persist in Supabase | Schema + migrations complete (50 tables + 1 index migration), not yet applied to a live project |
 | Documents/photos upload successfully | Built, unverified — signed-upload flow covers incidents and the central document library, versioning, approval (uploader ≠ approver), evidence-link reuse |
-| Property/department restriction enforced | Built, unverified — RLS policies + app-layer checks on every mutating action across all modules including KPI snapshots; unit-tested (40 passing tests); RLS integration test written, not yet run |
-| Medical data separately protected | Built, unverified — unchanged from Phase 2 |
+| Property/department restriction enforced | Built, unverified — RLS policies + app-layer checks on every mutating action across all modules including KPI snapshots and the CSV export; unit-tested (40 passing tests); RLS integration test written, not yet run |
+| Medical data separately protected | Built, unverified — unchanged from Phase 2; confirmed the CSV export path (`/reports/export`) queries `incidents` only, never `medical_records` |
 | Incidents pass through full workflow | Built, unverified — unchanged from Phase 2 |
 | Audits and findings work | Built, unverified — unchanged from Phase 3 |
 | CAPA verify/close works (owner ≠ verifier) | Built, unverified — unchanged from Phase 2/3 |
 | Evidence reused across controls/KPIs | Built, unverified — unchanged from Phase 3 |
-| Dashboards calculate from live records | Built, unverified — `/kpis` computes every tile from live Supabase queries at request time (never hard-coded); 13 of the 38 catalogued KPIs are wired to real calculation functions spanning count/sum/rollup shapes across all three classifications (leading/lagging/assurance), the other 25 show their catalogue definition with an explicit "not yet implemented" state rather than a fabricated number |
-| KPI calculations reconcile to source | Built, unverified — every calculation returns the actual matched record IDs as `includedRecordIds`, persists an append-only snapshot to `kpi_calculations` on every view, and the "View calculation" page renders formula/source tables/included-record count/data-quality status/target-warning-critical thresholds/evidence requirements together so the number is never a black box |
-| Audit log captures material activity | Unchanged from Phase 3 — KPI calculation itself is not separately audit-logged (it's a read/derive operation over already-audited source records, not a state change); noted as a design decision, not an oversight |
-| Critical automated tests pass | `npm run lint`, `npm run typecheck`, `npm run test` (40/40 unit tests — adds financial-year/YTD-clipping and RAG-status logic to the Phase 3 suite), `npm run build` all pass with 32 routes |
-| Deployable from a clean repository | `wrangler.jsonc` + `open-next.config.ts` present for all 3 hosted environments; `wrangler deploy` not yet run — needs a Cloudflare account/API token (open item, see §5) |
+| Dashboards calculate from live records | Built, unverified — unchanged from Phase 4 |
+| KPI calculations reconcile to source | Built, unverified — unchanged from Phase 4 |
+| Audit log captures material activity | Now also covers rate-limit rejections, password-reset requests, and data exports |
+| Critical automated tests pass | `npm run lint`, `npm run typecheck`, `npm run test` (40/40 unit tests), `npm run build` (37 routes) all pass. **Additionally verified in this session** (not just statically checked): `next start` was run locally and the security-headers Playwright spec (2/2 tests) passed against the live dev server, confirming CSP/X-Frame-Options/HSTS/etc. are actually emitted and the unauthenticated-redirect guard actually works — the one part of this build that's genuinely running-app-verified rather than static-analysis-verified |
+| Deployable from a clean repository | `wrangler.jsonc` + `open-next.config.ts` present for all 3 hosted environments; `wrangler deploy` not yet run — needs a Cloudflare account/API token (open item, see §5). Full local/Supabase/Cloudflare setup instructions now in `apps/web/README.md` |
+
+### 6.3 Phase 5 additions
+
+- **Security headers** (`next.config.ts`): CSP (script/style/img/connect-src scoped to the
+  configured Supabase origin, `frame-ancestors 'none'`, `object-src 'none'`), X-Content-Type-Options,
+  X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS. Verified live (see above).
+- **Rate limiting** (`src/server/security/rate-limit.ts`): DB-backed, IP-keyed, applied to login
+  (10/15min), registration (5/60min), and password-reset requests (5/60min). Explicitly
+  documented as defense-in-depth on top of the edge-level Cloudflare rate limiting described in
+  `security-model.md` §5 — this is the part that's actually testable from application code
+  without a live Cloudflare account.
+- **Scheduled reminders**: `capa_actions` (3 days before due date) and `document_versions`
+  (on review date) now write `scheduled_reminders` rows at creation time;
+  `/api/cron/reminders` processes them into in-app notifications, idempotently (sentAt gate).
+  Not yet wired to an actual Cloudflare Cron Trigger — see `apps/web/README.md` "Cron Triggers".
+- **KPI cache refresh**: `/api/cron/kpi-refresh` recomputes every implemented KPI × property —
+  same not-yet-wired-to-a-trigger caveat.
+- **`/account`**: profile summary, role/property/medical-permission summary, notification inbox
+  with mark-read.
+- **`/reports/export`**: permission-controlled CSV export (Super Admin, Group HS Admin, Property
+  HS Officer, Internal Auditor, Executive Read-Only), scoped to granted properties, every export
+  writes a `data_exported` audit-log event.
+- Both `/api/cron/*` routes require a shared-secret header (`CRON_SECRET`), checked before any
+  work runs — never accept an unauthenticated scheduled-job request.
+
+### 6.2 KPI engine design notes
 
 ### 6.2 KPI engine design notes
 

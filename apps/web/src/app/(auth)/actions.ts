@@ -8,6 +8,7 @@ import { getDb } from "@/db";
 import { registrationRequests } from "@/db/schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { writeAuditLog } from "@/server/audit-log";
+import { isRateLimited } from "@/server/security/rate-limit";
 
 async function requestMeta() {
   const h = await headers();
@@ -38,9 +39,28 @@ export async function signInAction(
     return { error: "Enter a valid email and password." };
   }
 
-  const supabase = await createSupabaseServerClient();
   const { ipAddress, userAgent } = await requestMeta();
 
+  if (
+    await isRateLimited({
+      ipAddress,
+      eventType: "failed_login",
+      maxAttempts: 10,
+      windowMinutes: 15,
+    })
+  ) {
+    await writeAuditLog({
+      actorId: null,
+      eventType: "failed_login",
+      entityType: "auth",
+      reason: "rate_limited",
+      ipAddress,
+      userAgent,
+    });
+    return { error: "Too many failed attempts. Try again in a few minutes." };
+  }
+
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error || !data.user) {
@@ -92,6 +112,18 @@ export async function signUpAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid registration details." };
   }
 
+  const { ipAddress } = await requestMeta();
+  if (
+    await isRateLimited({
+      ipAddress,
+      eventType: "registration",
+      maxAttempts: 5,
+      windowMinutes: 60,
+    })
+  ) {
+    return { error: "Too many registration attempts from this location. Try again later." };
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
@@ -119,6 +151,7 @@ export async function signUpAction(
     eventType: "registration",
     entityType: "profiles",
     entityId: data.user.id,
+    ipAddress,
   });
 
   redirect("/register/pending");
@@ -154,6 +187,28 @@ export async function forgotPasswordAction(
   if (!parsed.success) {
     return { error: "Enter a valid email address." };
   }
+
+  const { ipAddress, userAgent } = await requestMeta();
+  if (
+    await isRateLimited({
+      ipAddress,
+      eventType: "password_reset_requested",
+      maxAttempts: 5,
+      windowMinutes: 60,
+    })
+  ) {
+    // Same generic response as success — avoids both user enumeration and revealing that
+    // rate limiting triggered, per the "do not branch on whether the email exists" rule below.
+    return {};
+  }
+
+  await writeAuditLog({
+    actorId: null,
+    eventType: "password_reset_requested",
+    entityType: "auth",
+    ipAddress,
+    userAgent,
+  });
 
   const supabase = await createSupabaseServerClient();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
