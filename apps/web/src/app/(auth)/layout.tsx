@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="bg-muted/30 flex min-h-svh flex-col items-center justify-center gap-6 p-6">
+    <div className="from-primary/5 via-background to-accent/20 flex min-h-svh flex-col items-center justify-center gap-6 bg-gradient-to-br p-6">
       <div className="flex items-center gap-2 text-lg font-semibold">
-        <span className="bg-primary text-primary-foreground rounded-md px-2 py-1 text-sm">
+        <span className="bg-primary text-primary-foreground rounded-md px-2 py-1 text-sm shadow-sm">
           SG
         </span>
         Sunlife SafeGuard
