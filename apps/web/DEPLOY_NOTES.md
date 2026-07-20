@@ -1,0 +1,1 @@
+<!-- Deployment history note: see docs/implementation-plan.md ADR-0006 for why this repo is deployed to Vercel rather than Cloudflare Workers (Next.js 16's Node-runtime-only proxy.ts is not yet supported by @opennextjs/cloudflare 1.20.1). -->
