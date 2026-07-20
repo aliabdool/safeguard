@@ -53,3 +53,17 @@ export function previousFinancialYear(period: Period): Period {
   const end = new Date(Date.UTC(period.end.getUTCFullYear() - 1, period.end.getUTCMonth(), 1));
   return { start, end };
 }
+
+/** Last 4 financial years, most recent first — matches the FY selector on the real board Excel. */
+export function recentFinancialYears(asOf: Date): { label: string; asOfAnchor: Date }[] {
+  const years: { label: string; asOfAnchor: Date }[] = [];
+  let { fyLabel, period } = financialYearFor(asOf);
+  for (let i = 0; i < 4; i++) {
+    years.push({ label: fyLabel, asOfAnchor: new Date(period.end.getTime() - 1) });
+    const prev = previousFinancialYear(period);
+    const relabelled = financialYearFor(new Date(prev.end.getTime() - 1));
+    fyLabel = relabelled.fyLabel;
+    period = prev;
+  }
+  return years;
+}

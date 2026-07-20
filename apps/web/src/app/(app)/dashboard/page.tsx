@@ -1,4 +1,4 @@
-import { and, between, eq, isNull, lt, ne, notInArray, sql } from "drizzle-orm";
+import { and, between, eq, sql } from "drizzle-orm";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,16 +17,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getDb } from "@/db";
-import {
-  capaActions,
-  departments,
-  incidents,
-  investigationCauses,
-  investigations,
-  properties,
-} from "@/db/schema";
+import { departments, incidents, properties } from "@/db/schema";
+import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi } from "@/server/kpi/calculate";
-import { financialYearFor, previousFinancialYear } from "@/server/kpi/period";
+import { financialYearFor, recentFinancialYears } from "@/server/kpi/period";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
 import { IncidentBarChart } from "./incident-bar-chart";
@@ -52,20 +46,6 @@ const HEADLINE_KPI_CODES = [
   "OPEN_CRIT_MAJOR_FINDINGS",
   "CAPA_EFFECTIVENESS",
 ];
-
-/** Last 4 financial years, most recent first — matches the FY selector on the real board Excel. */
-function recentFinancialYears(asOf: Date) {
-  const years: { label: string; asOfAnchor: Date }[] = [];
-  let { fyLabel, period } = financialYearFor(asOf);
-  for (let i = 0; i < 4; i++) {
-    years.push({ label: fyLabel, asOfAnchor: new Date(period.end.getTime() - 1) });
-    const prev = previousFinancialYear(period);
-    const relabelled = financialYearFor(new Date(prev.end.getTime() - 1));
-    fyLabel = relabelled.fyLabel;
-    period = prev;
-  }
-  return years;
-}
 
 export default async function DashboardPage({
   searchParams,
@@ -142,80 +122,11 @@ export default async function DashboardPage({
   ]);
 
   // Data-quality panel — real checks against this FY/property's own records, not fabricated.
-  const inScopeIncidents = await db
-    .select({ id: incidents.id, status: incidents.status })
-    .from(incidents)
-    .where(and(periodPredicate, scopePredicate));
-  const needingInvestigation = inScopeIncidents.filter((i) => i.status !== "reported");
-
-  const rootCauseIncidentIds =
-    needingInvestigation.length === 0
-      ? new Set<string>()
-      : new Set(
-          (
-            await db
-              .select({ incidentId: investigations.incidentId })
-              .from(investigationCauses)
-              .innerJoin(
-                investigations,
-                eq(investigations.id, investigationCauses.investigationId),
-              )
-              .where(eq(investigationCauses.causeType, "root"))
-          ).map((r) => r.incidentId),
-        );
-  const missingRootCause = needingInvestigation.filter(
-    (i) => !rootCauseIncidentIds.has(i.id),
-  ).length;
-
-  const [missingInjuryMechanism] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(incidents)
-    .where(
-      and(
-        periodPredicate,
-        scopePredicate,
-        isNull(incidents.injuryMechanism),
-        ne(incidents.outcome, "no_injury"),
-      ),
-    );
-
-  const [pendingReportableDetermination] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(incidents)
-    .where(
-      and(
-        periodPredicate,
-        scopePredicate,
-        eq(incidents.reportableStatus, "pending_determination"),
-      ),
-    );
-
-  const capaScopePredicate = selectedPropertyId
-    ? eq(capaActions.propertyId, selectedPropertyId)
-    : undefined;
-  const [overdueCapa] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(capaActions)
-    .where(
-      and(
-        capaScopePredicate,
-        lt(capaActions.dueDate, new Date().toISOString().slice(0, 10)),
-        notInArray(capaActions.status, ["closed", "verified"]),
-      ),
-    );
-
-  const dataQuality = [
-    { label: "Missing root cause (investigated incidents)", count: missingRootCause },
-    {
-      label: "Missing injury mechanism (injury outcomes)",
-      count: missingInjuryMechanism?.n ?? 0,
-    },
-    {
-      label: "OSH-reportable status not yet determined",
-      count: pendingReportableDetermination?.n ?? 0,
-    },
-    { label: "Corrective actions overdue", count: overdueCapa?.n ?? 0 },
-  ];
+  const dataQuality = await computeDataQuality({
+    propertyId: selectedPropertyId,
+    periodStart: selectedPeriod.start,
+    periodEnd: selectedPeriod.end,
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -267,7 +178,13 @@ export default async function DashboardPage({
         >
           Apply
         </button>
-        <Link href="/kpis" className="text-primary ml-auto self-center text-sm underline">
+        <Link
+          href={`/reports/export?fy=${encodeURIComponent(selectedFy.label)}${selectedPropertyId ? `&propertyId=${selectedPropertyId}` : ""}`}
+          className="text-primary ml-auto self-center text-sm underline"
+        >
+          Board narrative &amp; assurance pack →
+        </Link>
+        <Link href="/kpis" className="text-primary self-center text-sm underline">
           Full KPI catalogue →
         </Link>
       </form>

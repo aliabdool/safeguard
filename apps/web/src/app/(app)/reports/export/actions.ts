@@ -7,6 +7,13 @@ import { getDb } from "@/db";
 import { incidents, properties } from "@/db/schema";
 import { writeAuditLog } from "@/server/audit-log";
 import { hasPropertyAccess, requireRole } from "@/server/permissions";
+import { recentFinancialYears } from "@/server/kpi/period";
+import { buildAssurancePackMarkdown } from "@/server/reporting/assurance-pack";
+import { generateBoardNarrative } from "@/server/reporting/board-narrative";
+import {
+  gatherAssurancePackInput,
+  gatherBoardNarrativeInput,
+} from "@/server/reporting/gather";
 
 const EXPORT_ROLES = [
   "SUPER_ADMIN",
@@ -15,6 +22,23 @@ const EXPORT_ROLES = [
   "INTERNAL_AUDITOR",
   "EXECUTIVE_READONLY",
 ] as const;
+
+/** Resolves an fy label (e.g. "FY2026") + optional property to the same scope the dashboard uses. */
+async function resolveScope(fyLabel: string | null, propertyId: string | null) {
+  const ctx = await requireRole([...EXPORT_ROLES]);
+  const db = getDb();
+  const allProperties = await db.select({ id: properties.id }).from(properties);
+  const visiblePropertyIds = new Set(
+    allProperties.filter((p) => hasPropertyAccess(ctx, p.id)).map((p) => p.id),
+  );
+  const scopedPropertyId =
+    propertyId && visiblePropertyIds.has(propertyId) ? propertyId : null;
+
+  const fyOptions = recentFinancialYears(new Date());
+  const selected = fyOptions.find((o) => o.label === fyLabel) ?? fyOptions[0]!;
+
+  return { ctx, propertyId: scopedPropertyId, asOfAnchor: selected.asOfAnchor };
+}
 
 function toCsvValue(value: unknown): string {
   const str = value == null ? "" : String(value);
@@ -92,4 +116,64 @@ export async function exportIncidentsCsvAction(): Promise<string> {
   });
 
   return csvLines.join("\n");
+}
+
+/**
+ * Auto-generated board narrative — deterministic prose built entirely from live KPI figures
+ * (src/server/reporting/board-narrative.ts). Same permission/audit-trail treatment as the CSV
+ * export: this is a data export, not a UI-only view.
+ */
+export async function generateBoardNarrativeAction(
+  fyLabel: string | null,
+  propertyId: string | null,
+): Promise<string> {
+  const {
+    ctx,
+    propertyId: scopedPropertyId,
+    asOfAnchor,
+  } = await resolveScope(fyLabel, propertyId);
+  const input = await gatherBoardNarrativeInput(scopedPropertyId, asOfAnchor);
+  const narrative = generateBoardNarrative(input);
+
+  const h = await headers();
+  await writeAuditLog({
+    actorId: ctx.userId,
+    eventType: "data_exported",
+    entityType: "board_narrative",
+    reason: `Board narrative generated for ${input.fyLabel} / ${input.propertyLabel}`,
+    ipAddress: h.get("x-forwarded-for") ?? h.get("cf-connecting-ip") ?? null,
+    userAgent: h.get("user-agent"),
+  });
+
+  return narrative;
+}
+
+/**
+ * ISAE-3000-aligned assurance evidence pack (src/server/reporting/assurance-pack.ts) — structured
+ * for an external assurance engagement, but explicitly disclaimed as not itself an assurance
+ * opinion. Same permission/audit-trail treatment as the other exports.
+ */
+export async function generateAssurancePackAction(
+  fyLabel: string | null,
+  propertyId: string | null,
+): Promise<string> {
+  const {
+    ctx,
+    propertyId: scopedPropertyId,
+    asOfAnchor,
+  } = await resolveScope(fyLabel, propertyId);
+  const input = await gatherAssurancePackInput(scopedPropertyId, asOfAnchor);
+  const pack = buildAssurancePackMarkdown(input);
+
+  const h = await headers();
+  await writeAuditLog({
+    actorId: ctx.userId,
+    eventType: "data_exported",
+    entityType: "assurance_pack",
+    reason: `Assurance pack generated for ${input.fyLabel} / ${input.propertyLabel}`,
+    ipAddress: h.get("x-forwarded-for") ?? h.get("cf-connecting-ip") ?? null,
+    userAgent: h.get("user-agent"),
+  });
+
+  return pack;
 }
