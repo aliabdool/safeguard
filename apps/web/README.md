@@ -165,8 +165,9 @@ headers, actually run against a live local dev server in this session): the full
 RLS policies, registration → admin approval → role/property/department assignment, incident
 workflow, restricted medical records, CAPA with owner≠verifier enforced at 4 independent layers,
 document versioning/approval/evidence reuse, ISO 45001 control library with the critical-gap
-override, audit programme/findings, a 13-KPI live calculation engine with FY/YTD comparison,
-security headers, rate limiting, scheduled reminders, permission-controlled export.
+override, audit programme/findings, a 15-KPI live calculation engine with FY/YTD comparison,
+security headers, rate limiting, scheduled reminders, permission-controlled export, a materiality
+module scoring GRI and IFRS S1 independently, and an IFRS S2 climate-risk register.
 
 **Not yet run against live infrastructure** (needs a real Supabase project + Cloudflare account,
 neither of which existed in the environment this was built in): the RLS integration test suite,
@@ -176,7 +177,7 @@ verify," not "verified in production."
 
 ## Known limitations (v1)
 
-- 25 of the 38 catalogued KPIs are documented (definition/formula/thresholds) but not yet wired
+- 25 of the 40 catalogued KPIs are documented (definition/formula/thresholds) but not yet wired
   to a live calculation function — `/kpis` shows them with an explicit "not yet implemented"
   state, never a fabricated number.
 - Cron Triggers aren't wired to the two `/api/cron/*` routes yet (see above) — reminders and the

@@ -34,6 +34,9 @@ const REGISTRY: Record<string, CalculationFn> = {
     countIncidentsInPeriod(p, eq(incidents.personType, "unsafe_condition")),
   HIGH_POTENTIAL: (p) => countIncidentsInPeriod(p, eq(incidents.isHighPotential, true)),
   HOSPITAL_REFERRALS: (p) => countIncidentsInPeriod(p, eq(incidents.hospitalReferral, true)),
+  TRAINEE_INCIDENTS: (p) => countIncidentsInPeriod(p, eq(incidents.personType, "trainee")),
+  REPORTABLE_OSH_CASES: (p) =>
+    countIncidentsInPeriod(p, eq(incidents.reportableStatus, "yes")),
   INCIDENT_COST: (p) => sumIncidentCostInPeriod(p),
   OPEN_CRIT_MAJOR_FINDINGS: (p) => countOpenCriticalMajorFindings(p),
   CAPA_ON_TIME: (p) => capaClosedOnTimeRate(p),
