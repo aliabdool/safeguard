@@ -73,7 +73,7 @@ export function AppNav({ roleCodes, fullName }: { roleCodes: RoleCode[]; fullNam
     <aside className="bg-sidebar text-sidebar-foreground flex flex-col md:sticky md:top-0 md:h-svh">
       <Link
         href="/dashboard"
-        className="flex items-center gap-3 border-b border-sidebar-border px-5 py-5 text-[15px] font-semibold text-white"
+        className="border-sidebar-border flex items-center gap-3 border-b px-5 py-5 text-[15px] font-semibold text-white"
       >
         <span className="bg-warning text-warning-foreground flex size-7 items-center justify-center rounded-full text-sm">
           ☀
@@ -127,7 +127,7 @@ export function AppNav({ roleCodes, fullName }: { roleCodes: RoleCode[]; fullNam
           </div>
         ) : null}
       </nav>
-      <div className="border-t border-sidebar-border px-4 py-3.5 text-[12.5px]">
+      <div className="border-sidebar-border border-t px-4 py-3.5 text-[12.5px]">
         <Link href="/account" className="mb-2.5 block hover:text-white">
           <span className="flex items-center gap-2">
             <span className="bg-sidebar-accent flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white">

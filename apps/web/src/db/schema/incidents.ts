@@ -1,6 +1,8 @@
 import {
   boolean,
+  date,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -11,7 +13,9 @@ import {
 import {
   causeTypeEnum,
   incidentStatusEnum,
+  injuryMechanismEnum,
   investigationStatusEnum,
+  oshReportableStatusEnum,
   personTypeEnum,
 } from "./_enums";
 import { documents } from "./documents";
@@ -35,6 +39,7 @@ export const incidents = pgTable("incidents", {
     .references(() => profiles.id),
   personType: personTypeEnum("person_type").notNull(),
   incidentType: text("incident_type").notNull(),
+  injuryMechanism: injuryMechanismEnum("injury_mechanism"),
   injuryType: text("injury_type"),
   bodyPart: text("body_part"),
   outcome: text("outcome").notNull(),
@@ -43,6 +48,15 @@ export const incidents = pgTable("incidents", {
   isHighPotential: boolean("is_high_potential").notNull().default(false),
   treatment: text("treatment"),
   hospitalReferral: boolean("hospital_referral").notNull().default(false),
+  // Statutory OSH-notification status — deliberately independent of `hospital_referral` (see
+  // docs/framework-model.md). "pending_determination" is the default: the app must never guess.
+  reportableStatus: oshReportableStatusEnum("reportable_status")
+    .notNull()
+    .default("pending_determination"),
+  reportingAuthority: text("reporting_authority"),
+  reportingDeadline: date("reporting_deadline"),
+  dateSubmitted: date("date_submitted"),
+  submissionReference: text("submission_reference"),
   lostWorkdays: integer("lost_workdays").notNull().default(0),
   restrictedDutyDays: integer("restricted_duty_days").notNull().default(0),
   incidentCost: numeric("incident_cost", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -54,6 +68,15 @@ export const incidents = pgTable("incidents", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Person-type-specific structured fields (employee number/department, trainee institution,
+ * contractor company/permit status, guest room/insurance notification, etc.) live in `details`
+ * as validated JSONB rather than one column per person-type per field — the set of fields
+ * genuinely varies by type and a single wide table would be mostly-null. Validated against a
+ * discriminated Zod union keyed on `personType` at the application layer
+ * (src/server/incidents/person-details.ts) before every write; never trusted as pre-validated
+ * just because it round-trips through the DB.
+ */
 export const incidentPersons = pgTable("incident_persons", {
   id: uuid("id").primaryKey().defaultRandom(),
   incidentId: uuid("incident_id")
@@ -63,6 +86,7 @@ export const incidentPersons = pgTable("incident_persons", {
   fullName: text("full_name"),
   employeeOrReferenceNo: text("employee_or_reference_no"),
   isPrimary: boolean("is_primary").notNull().default(true),
+  details: jsonb("details"),
 });
 
 export const incidentNotifications = pgTable("incident_notifications", {

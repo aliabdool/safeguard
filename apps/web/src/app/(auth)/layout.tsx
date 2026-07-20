@@ -26,9 +26,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             <em className="text-warning not-italic">Multiple framework outputs.</em>
           </h1>
           <p className="mt-4 max-w-md text-[15px] text-[#cfe0e4]">
-            Three connected layers: incident intelligence · audit &amp; assurance · disclosure and
-            certification readiness, mapped to ISO 45001, Mauritius legal requirements, GRI 403,
-            IFRS S1/S2, SASB, UN Global Compact and ILO-OSH.
+            Three connected layers: incident intelligence · audit &amp; assurance · disclosure
+            and certification readiness, mapped to ISO 45001, Mauritius legal requirements, GRI
+            403, IFRS S1/S2, SASB, UN Global Compact and ILO-OSH.
           </p>
           <div className="mt-8 flex max-w-lg gap-0 border-t border-white/15 pt-4">
             {STAGES.map((stage) => (

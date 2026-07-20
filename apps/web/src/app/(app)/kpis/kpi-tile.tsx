@@ -23,7 +23,7 @@ export function KpiTile({ kpi }: { kpi: KpiTileResult }) {
     <Link
       href={`/kpis/${kpi.kpiCode}`}
       className={cn(
-        "bg-card hover:shadow-md flex h-full flex-col gap-2.5 rounded-lg border border-t-4 p-4 shadow-sm transition-shadow",
+        "bg-card flex h-full flex-col gap-2.5 rounded-lg border border-t-4 p-4 shadow-sm transition-shadow hover:shadow-md",
         RAG_BORDER[kpi.ragStatus],
       )}
     >

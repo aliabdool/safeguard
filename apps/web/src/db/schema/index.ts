@@ -11,3 +11,5 @@ export * from "./audits";
 export * from "./kpi";
 export * from "./audit-log";
 export * from "./notifications";
+export * from "./materiality";
+export * from "./climate-risk";

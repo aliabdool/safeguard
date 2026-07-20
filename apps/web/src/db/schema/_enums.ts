@@ -16,6 +16,7 @@ export const registrationStatusEnum = pgEnum("registration_status", [
 // Incidents
 export const personTypeEnum = pgEnum("person_type", [
   "employee",
+  "trainee",
   "contractor",
   "guest",
   "visitor",
@@ -24,6 +25,31 @@ export const personTypeEnum = pgEnum("person_type", [
   "none",
   "near_miss",
   "unsafe_condition",
+]);
+// Statutory-notification status under the applicable OSH regime (Mauritius OSH Act in scope for
+// v1). Deliberately distinct from `hospital_referral` — a case can be hospital-referred without
+// being a statutory reportable event, and vice versa (see docs/framework-model.md).
+export const oshReportableStatusEnum = pgEnum("osh_reportable_status", [
+  "yes",
+  "no",
+  "pending_determination",
+]);
+export const injuryMechanismEnum = pgEnum("injury_mechanism", [
+  "slip_trip_fall_same_level",
+  "fall_from_height",
+  "cut_laceration",
+  "burn_scald",
+  "manual_handling",
+  "struck_by_object",
+  "struck_against_object",
+  "falling_object",
+  "chemical_exposure",
+  "electrical_contact",
+  "vehicle_related",
+  "ergonomic_repetitive_strain",
+  "food_allergen_exposure",
+  "marine_swimming",
+  "other",
 ]);
 export const incidentStatusEnum = pgEnum("incident_status", [
   "reported",
@@ -146,6 +172,9 @@ export const evidenceLinkedEntityTypeEnum = pgEnum("evidence_linked_entity_type"
   "audit_finding",
   "capa_action",
   "disclosure",
+  "incident",
+  "climate_risk",
+  "material_topic",
 ]);
 export const evidenceLevelEnum = pgEnum("evidence_level", [
   "policy",
@@ -184,4 +213,62 @@ export const dataQualityStatusEnum = pgEnum("data_quality_status", [
   "ok",
   "unverified",
   "incomplete",
+]);
+
+// Shared draft/review/approval trail for materiality assessments and the climate-risk register —
+// deliberately generic (not "materiality_status") so both modules share one lifecycle concept.
+export const assessmentStatusEnum = pgEnum("assessment_status", [
+  "draft",
+  "under_review",
+  "approved",
+]);
+
+// Materiality module (docs/framework-model.md §materiality). GRI 3 (double/impact materiality)
+// and IFRS S1 (single/financial materiality) are scored independently on the same topic — never
+// blended into one number. See src/server/materiality/scoring.ts for the classification logic.
+export const griImpactTypeEnum = pgEnum("gri_impact_type", ["actual", "potential"]);
+export const griImpactValenceEnum = pgEnum("gri_impact_valence", ["positive", "negative"]);
+export const ifrsRiskOrOpportunityEnum = pgEnum("ifrs_risk_or_opportunity", [
+  "risk",
+  "opportunity",
+]);
+export const timeHorizonEnum = pgEnum("time_horizon", [
+  "short_term",
+  "medium_term",
+  "long_term",
+]);
+export const consultationTypeEnum = pgEnum("consultation_type", ["stakeholder", "expert"]);
+
+// Climate-risk register (IFRS S2). A hazard is exactly one of these three categories — never
+// blended, since acute/chronic physical risk and transition risk have different disclosure
+// expectations under IFRS S2.
+export const climateRiskCategoryEnum = pgEnum("climate_risk_category", [
+  "acute_physical",
+  "chronic_physical",
+  "transition",
+]);
+export const climateHazardEnum = pgEnum("climate_hazard", [
+  // Acute physical
+  "cyclone",
+  "flood",
+  "extreme_rainfall",
+  "storm_surge",
+  "coastal_erosion",
+  "heatwave",
+  "fire",
+  // Chronic physical
+  "rising_temperature",
+  "heat_stress",
+  "water_scarcity",
+  "sea_level_rise",
+  "vector_borne_disease",
+  "changing_working_conditions",
+  // Transition
+  "regulation",
+  "carbon_pricing",
+  "insurance_cost",
+  "energy_requirements",
+  "disclosure_requirements",
+  "technology_changes",
+  "reputation_customer_expectations",
 ]);
