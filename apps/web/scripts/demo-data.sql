@@ -12,11 +12,11 @@
 -- as the real Super Admin was created — this script does not create logins, only assigns roles
 -- and data to accounts that already exist):
 --   aliabdool@hotmail.co.uk   (Super Admin — already promoted)
---   hso-demo@safeguard.local        Priya Naidoo       H&S Officer
---   nurse-demo@safeguard.local      Jennyta Ramgoolam  Nurse (reporting + medical)
---   dutymanager-demo@safeguard.local Kevin Ramsamy     Duty Manager (no medical access)
---   exec-demo@safeguard.local       Executive Committee Executive read-only
---   auditor-demo@safeguard.local    Marc Dubois        Internal Auditor
+--   hso-demo@example.com        Priya Naidoo       H&S Officer
+--   nurse-demo@example.com      Jennyta Ramgoolam  Nurse (reporting + medical)
+--   dutymanager-demo@example.com Kevin Ramsamy     Duty Manager (no medical access)
+--   exec-demo@example.com       Executive Committee Executive read-only
+--   auditor-demo@example.com    Marc Dubois        Internal Auditor
 --
 -- Idempotency: NOT fully idempotent (incident/action/finding/audit numbers are fixed strings so
 -- a second run will hit unique-constraint errors on those, which is the intended guard against
@@ -51,11 +51,11 @@ begin
   -- 0. Resolve the 6 accounts. Fail fast with a clear message if any are missing.
   ---------------------------------------------------------------------------
   select id into uid_super from auth.users where email = 'aliabdool@hotmail.co.uk';
-  select id into uid_hso from auth.users where email = 'hso-demo@safeguard.local';
-  select id into uid_nurse from auth.users where email = 'nurse-demo@safeguard.local';
-  select id into uid_dm from auth.users where email = 'dutymanager-demo@safeguard.local';
-  select id into uid_exec from auth.users where email = 'exec-demo@safeguard.local';
-  select id into uid_aud from auth.users where email = 'auditor-demo@safeguard.local';
+  select id into uid_hso from auth.users where email = 'hso-demo@example.com';
+  select id into uid_nurse from auth.users where email = 'nurse-demo@example.com';
+  select id into uid_dm from auth.users where email = 'dutymanager-demo@example.com';
+  select id into uid_exec from auth.users where email = 'exec-demo@example.com';
+  select id into uid_aud from auth.users where email = 'auditor-demo@example.com';
 
   if uid_super is null or uid_hso is null or uid_nurse is null or uid_dm is null
      or uid_exec is null or uid_aud is null then
