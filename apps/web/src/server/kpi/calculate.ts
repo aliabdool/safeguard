@@ -1,14 +1,19 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { eq, gt, inArray } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { incidents, kpiCalculations, kpiDefinitions } from "@/db/schema";
 
-import { capaClosedOnTimeRate } from "./calculations/capa";
+import { capaClosedOnTimeRate, capaEffectivenessRate } from "./calculations/capa";
 import { countOpenCriticalMajorFindings } from "./calculations/findings";
 import { frameworkReadinessKpi } from "./calculations/framework";
-import { countIncidentsInPeriod, sumIncidentCostInPeriod } from "./calculations/incidents";
+import {
+  RECORDABLE_OUTCOMES,
+  countIncidentsInPeriod,
+  sumIncidentCostInPeriod,
+  sumIncidentIntegerFieldInPeriod,
+} from "./calculations/incidents";
 import { financialYearFor, previousFinancialYear, sameperiodYtdComparison } from "./period";
 import { computeRagStatus, computeVariance, type KpiDirection, type RagStatus } from "./rag";
 import type { KpiCalculationParams, KpiCalculationResult } from "./types";
@@ -37,6 +42,15 @@ const REGISTRY: Record<string, CalculationFn> = {
   TRAINEE_INCIDENTS: (p) => countIncidentsInPeriod(p, eq(incidents.personType, "trainee")),
   REPORTABLE_OSH_CASES: (p) =>
     countIncidentsInPeriod(p, eq(incidents.reportableStatus, "yes")),
+  FATALITIES: (p) => countIncidentsInPeriod(p, eq(incidents.outcome, "fatality")),
+  LTI: (p) => countIncidentsInPeriod(p, gt(incidents.lostWorkdays, 0)),
+  MTC: (p) => countIncidentsInPeriod(p, eq(incidents.outcome, "medical_treatment")),
+  RECORDABLE_INJURIES: (p) =>
+    countIncidentsInPeriod(p, inArray(incidents.outcome, [...RECORDABLE_OUTCOMES])),
+  LOST_WORKDAYS: (p) => sumIncidentIntegerFieldInPeriod(p, incidents.lostWorkdays),
+  RESTRICTED_DUTY_DAYS: (p) =>
+    sumIncidentIntegerFieldInPeriod(p, incidents.restrictedDutyDays),
+  CAPA_EFFECTIVENESS: (p) => capaEffectivenessRate(p),
   INCIDENT_COST: (p) => sumIncidentCostInPeriod(p),
   OPEN_CRIT_MAJOR_FINDINGS: (p) => countOpenCriticalMajorFindings(p),
   CAPA_ON_TIME: (p) => capaClosedOnTimeRate(p),

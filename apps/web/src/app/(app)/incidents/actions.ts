@@ -17,6 +17,7 @@ import {
 } from "@/db/schema";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextIncidentNumber } from "@/server/incidents/number";
+import { personDetailsSchema } from "@/server/incidents/person-details";
 import {
   hasDepartmentAccess,
   hasPropertyAccess,
@@ -24,6 +25,24 @@ import {
   requireRole,
 } from "@/server/permissions";
 import { confirmUpload, createUploadUrl, FileValidationError } from "@/server/storage";
+
+const INJURY_MECHANISMS = [
+  "slip_trip_fall_same_level",
+  "fall_from_height",
+  "cut_laceration",
+  "burn_scald",
+  "manual_handling",
+  "struck_by_object",
+  "struck_against_object",
+  "falling_object",
+  "chemical_exposure",
+  "electrical_contact",
+  "vehicle_related",
+  "ergonomic_repetitive_strain",
+  "food_allergen_exposure",
+  "marine_swimming",
+  "other",
+] as const;
 
 const REPORTER_ROLES = [
   "INCIDENT_REPORTER",
@@ -41,6 +60,7 @@ const createIncidentSchema = z.object({
   occurredAt: z.string().min(1, "Date/time of occurrence is required."),
   personType: z.enum([
     "employee",
+    "trainee",
     "contractor",
     "guest",
     "visitor",
@@ -51,7 +71,24 @@ const createIncidentSchema = z.object({
     "unsafe_condition",
   ]),
   personName: z.string().optional(),
+  employeeNumber: z.string().optional(),
+  employeeDepartment: z.string().optional(),
+  employeeJobTitle: z.string().optional(),
+  employeeHrConfirmed: z.boolean().optional(),
+  traineeInstitution: z.string().optional(),
+  traineeSupervisor: z.string().optional(),
+  traineeDepartment: z.string().optional(),
+  traineeInductionStatus: z.enum(["completed", "in_progress", "not_started"]).optional(),
+  contractorCompany: z.string().optional(),
+  contractorOwner: z.string().optional(),
+  contractorPermitStatus: z.enum(["valid", "expired", "not_required", "pending"]).optional(),
+  contractorInductionCompleted: z.boolean().optional(),
+  guestRoomNumber: z.string().optional(),
+  guestRelationsFollowUp: z.boolean().optional(),
+  guestMedicalReferral: z.boolean().optional(),
+  guestInsuranceNotified: z.boolean().optional(),
   incidentType: z.string().min(1, "Incident type is required."),
+  injuryMechanism: z.enum(INJURY_MECHANISMS).optional().or(z.literal("")),
   injuryType: z.string().optional(),
   bodyPart: z.string().optional(),
   outcome: z.string().min(1, "Outcome is required."),
@@ -60,6 +97,7 @@ const createIncidentSchema = z.object({
   isHighPotential: z.boolean(),
   treatment: z.string().optional(),
   hospitalReferral: z.boolean(),
+  reportableStatus: z.enum(["yes", "no", "pending_determination"]),
   lostWorkdays: z.coerce.number().int().min(0),
   restrictedDutyDays: z.coerce.number().int().min(0),
   incidentCost: z.coerce.number().min(0),
@@ -80,7 +118,24 @@ export async function createIncidentAction(
     occurredAt: formData.get("occurredAt"),
     personType: formData.get("personType"),
     personName: formData.get("personName") ?? undefined,
+    employeeNumber: formData.get("employeeNumber") ?? undefined,
+    employeeDepartment: formData.get("employeeDepartment") ?? undefined,
+    employeeJobTitle: formData.get("employeeJobTitle") ?? undefined,
+    employeeHrConfirmed: formData.get("employeeHrConfirmed") === "on",
+    traineeInstitution: formData.get("traineeInstitution") ?? undefined,
+    traineeSupervisor: formData.get("traineeSupervisor") ?? undefined,
+    traineeDepartment: formData.get("traineeDepartment") ?? undefined,
+    traineeInductionStatus: formData.get("traineeInductionStatus") || undefined,
+    contractorCompany: formData.get("contractorCompany") ?? undefined,
+    contractorOwner: formData.get("contractorOwner") ?? undefined,
+    contractorPermitStatus: formData.get("contractorPermitStatus") || undefined,
+    contractorInductionCompleted: formData.get("contractorInductionCompleted") === "on",
+    guestRoomNumber: formData.get("guestRoomNumber") ?? undefined,
+    guestRelationsFollowUp: formData.get("guestRelationsFollowUp") === "on",
+    guestMedicalReferral: formData.get("guestMedicalReferral") === "on",
+    guestInsuranceNotified: formData.get("guestInsuranceNotified") === "on",
     incidentType: formData.get("incidentType"),
+    injuryMechanism: formData.get("injuryMechanism") ?? undefined,
     injuryType: formData.get("injuryType") ?? undefined,
     bodyPart: formData.get("bodyPart") ?? undefined,
     outcome: formData.get("outcome"),
@@ -89,6 +144,7 @@ export async function createIncidentAction(
     isHighPotential: formData.get("isHighPotential") === "on",
     treatment: formData.get("treatment") ?? undefined,
     hospitalReferral: formData.get("hospitalReferral") === "on",
+    reportableStatus: formData.get("reportableStatus") || "pending_determination",
     lostWorkdays: formData.get("lostWorkdays") || 0,
     restrictedDutyDays: formData.get("restrictedDutyDays") || 0,
     incidentCost: formData.get("incidentCost") || 0,
@@ -100,6 +156,67 @@ export async function createIncidentAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid incident details." };
   }
   const data = parsed.data;
+
+  // Person-type-specific structured fields are optional (a reporter can submit without filling
+  // that section in), but if any field in the section was touched, the whole section must
+  // validate against person-details.ts's shape for the selected person type — never partially
+  // accepted.
+  let rawPersonDetails: Record<string, unknown> | null = null;
+  if (data.personType === "employee") {
+    const touched = data.employeeNumber || data.employeeDepartment || data.employeeJobTitle;
+    if (touched) {
+      rawPersonDetails = {
+        employeeNumber: data.employeeNumber,
+        department: data.employeeDepartment,
+        jobTitle: data.employeeJobTitle,
+        hrConfirmed: data.employeeHrConfirmed ?? false,
+      };
+    }
+  } else if (data.personType === "trainee") {
+    const touched =
+      data.traineeInstitution || data.traineeSupervisor || data.traineeDepartment;
+    if (touched) {
+      rawPersonDetails = {
+        trainingInstitution: data.traineeInstitution,
+        placementSupervisor: data.traineeSupervisor,
+        trainingDepartment: data.traineeDepartment,
+        inductionStatus: data.traineeInductionStatus,
+      };
+    }
+  } else if (data.personType === "contractor") {
+    const touched = data.contractorCompany || data.contractorOwner;
+    if (touched) {
+      rawPersonDetails = {
+        contractorCompany: data.contractorCompany,
+        contractOwner: data.contractorOwner,
+        permitToWorkStatus: data.contractorPermitStatus,
+        contractorInductionCompleted: data.contractorInductionCompleted ?? false,
+      };
+    }
+  } else if (data.personType === "guest") {
+    rawPersonDetails = {
+      roomNumber: data.guestRoomNumber || undefined,
+      guestRelationsFollowUp: data.guestRelationsFollowUp ?? false,
+      medicalReferral: data.guestMedicalReferral ?? false,
+      insuranceNotified: data.guestInsuranceNotified ?? false,
+    };
+  }
+
+  let personDetails: unknown = null;
+  if (rawPersonDetails) {
+    const detailsResult = personDetailsSchema.safeParse({
+      ...rawPersonDetails,
+      personType: data.personType,
+    });
+    if (!detailsResult.success) {
+      return {
+        error:
+          `Please complete the ${data.personType} details section — ` +
+          (detailsResult.error.issues[0]?.message ?? "some fields are missing."),
+      };
+    }
+    personDetails = detailsResult.data;
+  }
 
   if (!hasPropertyAccess(ctx, data.propertyId)) {
     return { error: "No access to this property." };
@@ -133,6 +250,7 @@ export async function createIncidentAction(
           reportedBy: ctx.userId,
           personType: data.personType,
           incidentType: data.incidentType,
+          injuryMechanism: data.injuryMechanism || null,
           injuryType: data.injuryType ?? null,
           bodyPart: data.bodyPart ?? null,
           outcome: data.outcome,
@@ -141,6 +259,7 @@ export async function createIncidentAction(
           isHighPotential: data.isHighPotential,
           treatment: data.treatment ?? null,
           hospitalReferral: data.hospitalReferral,
+          reportableStatus: data.reportableStatus,
           lostWorkdays: data.lostWorkdays,
           restrictedDutyDays: data.restrictedDutyDays,
           incidentCost: String(data.incidentCost),
@@ -164,6 +283,7 @@ export async function createIncidentAction(
     personType: data.personType,
     fullName: data.personName ?? null,
     isPrimary: true,
+    details: personDetails,
   });
 
   await writeAuditLog({
