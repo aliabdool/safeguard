@@ -75,6 +75,25 @@ so migrations + seed data can be applied entirely through the Supabase dashboard
 for anyone with direct DB access; `seed.sql` must be kept in sync by hand if `seed.ts` changes.
 Status: accepted.
 
+**ADR-0007 — Deploy the Client Demonstration environment to Vercel instead of Cloudflare
+Workers.** Context: the approved stack specifies Cloudflare Workers hosting via
+`@opennextjs/cloudflare`. Attempting a real deploy surfaced a hard incompatibility: Next.js 16
+renamed `middleware.ts` to `proxy.ts` and made it run *only* on the Node.js runtime (Edge runtime
+support for middleware was removed — see `src/proxy.ts`'s header comment), while
+`@opennextjs/cloudflare` — even at its newest release, 1.20.1, confirmed via the npm registry —
+does not yet support Node.js-runtime middleware, only the older Edge-runtime style. The
+`opennextjs-cloudflare build` step fails outright (`Node.js middleware is not currently
+supported`) with no workaround short of either downgrading Next.js (a major regression) or
+rewriting the Supabase session-refresh logic out of global middleware and into each protected
+route/layout individually (a nontrivial, security-relevant change not undertaken here). Decision,
+made with the user (not unilaterally): deploy the Client Demonstration environment to Vercel
+instead, which runs Next.js's proxy/middleware natively with zero adapter and no code changes.
+Production Cloudflare deployment remains blocked on the same incompatibility and is **not**
+resolved by this ADR — `wrangler.jsonc`, the `cf:build`/`cf:deploy:*` scripts, and the Cloudflare
+setup instructions in README.md are left in place for whenever `@opennextjs/cloudflare` adds
+Node-runtime middleware support, or the middleware is refactored. Status: accepted for the
+demonstration/showcase deployment only.
+
 ## 3. What could not be completed without external accounts/credentials
 
 Per the explicit pause condition ("a required secret, domain, API key or external account is
