@@ -3,73 +3,94 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Palette taken directly from the SafeGuard design brief (reference/prototype), not invented:
+ * deep ocean navy ink, lagoon teal primary, Sun-brand amber accent, cool paper background.
+ * Severity/status scale colors (--sev1..--sev5) are additive tokens the brief specifies for
+ * incident/finding severity chips — not part of the standard shadcn set.
+ */
 :root {
   --radius: 0.625rem;
-  --background: oklch(0.99 0.004 90);
-  --foreground: oklch(0.22 0.03 240);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.03 240);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.03 240);
-  --primary: oklch(0.45 0.1 200);
-  --primary-foreground: oklch(0.98 0.005 200);
-  --secondary: oklch(0.96 0.02 90);
-  --secondary-foreground: oklch(0.32 0.05 240);
-  --muted: oklch(0.96 0.012 90);
-  --muted-foreground: oklch(0.5 0.03 240);
-  --accent: oklch(0.93 0.035 90);
-  --accent-foreground: oklch(0.32 0.07 200);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.6 0.15 145);
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.75 0.16 85);
-  --warning-foreground: oklch(0.205 0 0);
-  --border: oklch(0.9 0.015 90);
-  --input: oklch(0.9 0.015 90);
-  --ring: oklch(0.6 0.1 200);
-  --sidebar: oklch(0.97 0.015 90);
-  --sidebar-foreground: oklch(0.22 0.03 240);
-  --sidebar-primary: oklch(0.45 0.1 200);
-  --sidebar-primary-foreground: oklch(0.98 0.005 200);
-  --sidebar-accent: oklch(0.93 0.035 90);
-  --sidebar-accent-foreground: oklch(0.32 0.07 200);
-  --sidebar-border: oklch(0.9 0.015 90);
-  --sidebar-ring: oklch(0.6 0.1 200);
+  --ink: #0b2237;
+  --teal: #0f5e68;
+  --teal-mid: #1b8a97;
+  --teal-soft: #e3eff0;
+  --paper: #f4f7f8;
+  --surface: #ffffff;
+  --line: #d9e2e6;
+  --muted-ink: #5b7080;
+  --sun: #e9a13b;
+  --sev1: #3e8e6e;
+  --sev2: #c7a00e;
+  --sev3: #da7b2b;
+  --sev4: #c2432b;
+  --sev5: #7e1e30;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--teal);
+  --primary-foreground: #ffffff;
+  --secondary: var(--teal-soft);
+  --secondary-foreground: var(--teal);
+  --muted: #eef2f3;
+  --muted-foreground: var(--muted-ink);
+  --accent: var(--teal-soft);
+  --accent-foreground: var(--teal);
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --success: var(--sev1);
+  --success-foreground: #ffffff;
+  --warning: var(--sun);
+  --warning-foreground: var(--ink);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--teal-mid);
+  --sidebar: var(--ink);
+  --sidebar-foreground: #b9cdd4;
+  --sidebar-primary: var(--teal);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.07);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: var(--teal-mid);
 }
 
 .dark {
-  --background: oklch(0.17 0.02 240);
-  --foreground: oklch(0.96 0.005 90);
-  --card: oklch(0.21 0.025 240);
-  --card-foreground: oklch(0.96 0.005 90);
-  --popover: oklch(0.21 0.025 240);
-  --popover-foreground: oklch(0.96 0.005 90);
-  --primary: oklch(0.74 0.13 85);
-  --primary-foreground: oklch(0.18 0.02 240);
-  --secondary: oklch(0.27 0.025 240);
-  --secondary-foreground: oklch(0.96 0.005 90);
-  --muted: oklch(0.26 0.02 240);
-  --muted-foreground: oklch(0.7 0.02 90);
-  --accent: oklch(0.3 0.055 200);
-  --accent-foreground: oklch(0.96 0.01 90);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.7 0.15 145);
-  --success-foreground: oklch(0.145 0 0);
-  --warning: oklch(0.8 0.16 85);
-  --warning-foreground: oklch(0.145 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.74 0.13 85);
-  --sidebar: oklch(0.19 0.025 240);
-  --sidebar-foreground: oklch(0.96 0.005 90);
-  --sidebar-primary: oklch(0.74 0.13 85);
-  --sidebar-primary-foreground: oklch(0.18 0.02 240);
-  --sidebar-accent: oklch(0.3 0.055 200);
-  --sidebar-accent-foreground: oklch(0.96 0.01 90);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.74 0.13 85);
+  --background: #0f1c27;
+  --foreground: #eef2f3;
+  --card: #16262f;
+  --card-foreground: #eef2f3;
+  --popover: #16262f;
+  --popover-foreground: #eef2f3;
+  --primary: var(--sun);
+  --primary-foreground: #1a1305;
+  --secondary: #1e333c;
+  --secondary-foreground: #eef2f3;
+  --muted: #1b2b34;
+  --muted-foreground: #9db2bc;
+  --accent: #1e3a41;
+  --accent-foreground: #eef2f3;
+  --destructive: #e2564a;
+  --destructive-foreground: #1a0a08;
+  --success: var(--sev1);
+  --success-foreground: #08150f;
+  --warning: var(--sun);
+  --warning-foreground: #1a1305;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: var(--sun);
+  --sidebar: #081420;
+  --sidebar-foreground: #b9cdd4;
+  --sidebar-primary: var(--sun);
+  --sidebar-primary-foreground: #1a1305;
+  --sidebar-accent: rgba(255, 255, 255, 0.07);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: var(--sun);
 }
 
 @theme inline {
@@ -108,8 +129,14 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-sev1: var(--sev1);
+  --color-sev2: var(--sev2);
+  --color-sev3: var(--sev3);
+  --color-sev4: var(--sev4);
+  --color-sev5: var(--sev5);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-sora);
+  --font-mono: ui-monospace, monospace;
 }
 
 @layer base {
@@ -118,6 +145,12 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
   }
   a,
   button {

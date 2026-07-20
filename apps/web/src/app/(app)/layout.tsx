@@ -1,6 +1,9 @@
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { getDb } from "@/db";
+import { profiles } from "@/db/schema";
 import { getAuthContext } from "@/server/permissions";
 
 import { AppNav } from "./app-nav";
@@ -24,10 +27,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect("/login?blocked=1");
   }
 
+  const db = getDb();
+  const [profile] = await db.select().from(profiles).where(eq(profiles.id, ctx.userId));
+
   return (
-    <div className="flex min-h-svh flex-col">
-      <AppNav roleCodes={ctx.roleCodes} />
-      <main className="flex-1 p-6">{children}</main>
+    <div className="grid min-h-svh md:grid-cols-[236px_1fr]">
+      <AppNav roleCodes={ctx.roleCodes} fullName={profile?.fullName ?? "Unknown user"} />
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8 md:px-10">{children}</main>
     </div>
   );
 }
