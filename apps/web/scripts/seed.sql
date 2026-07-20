@@ -35,26 +35,54 @@ insert into frameworks (code, name, description) values
   ('ILO_OSH', 'ILO-OSH', 'ILO-OSH 2001 guidelines.')
 on conflict (code) do nothing;
 
--- Departments
+-- Departments. Core 11 plus 8 more grounded in the real Ambre Group board-dashboard taxonomy
+-- (Kitchen and Stewarding are tracked separately from Food & Beverage there) and standard hotel
+-- back-of-house functions.
 insert into departments (code, name) values
   ('HOUSEKEEPING', 'Housekeeping'),
   ('FOOD_BEVERAGE', 'Food & Beverage'),
+  ('KITCHEN', 'Kitchen'),
+  ('STEWARDING', 'Stewarding'),
   ('ENGINEERING', 'Engineering & Maintenance'),
   ('FRONT_OFFICE', 'Front Office'),
+  ('GUEST_RELATIONS', 'Guest Relations'),
   ('SECURITY', 'Security'),
   ('SPA_WELLNESS', 'Spa & Wellness'),
+  ('RECREATION_ENTERTAINMENT', 'Recreation & Entertainment'),
+  ('PUBLIC_AREA', 'Public Area'),
   ('GROUNDS_LANDSCAPING', 'Grounds & Landscaping'),
   ('HUMAN_RESOURCES', 'Human Resources'),
   ('FINANCE', 'Finance'),
+  ('PURCHASING', 'Purchasing & Stores'),
+  ('IT', 'IT & Systems'),
   ('SALES_MARKETING', 'Sales & Marketing'),
+  ('ADMIN', 'Administration'),
   ('EXECUTIVE', 'Executive Office')
 on conflict (code) do nothing;
 
--- Demo properties (Development/Demonstration environments only)
+-- Demo properties (Development/Demonstration environments only) — the 10-incident demo dataset
+-- in demo-data.sql is scoped to SL-BEACH; leave these in place even after real properties exist.
 insert into properties (code, name, brand, country) values
   ('SL-BEACH', 'Sunlife Beach Resort & Spa', 'Sunlife Collection', 'Mauritius'),
   ('SL-LAGOON', 'Sunlife Lagoon Hotel', 'Sunlife Collection', 'Mauritius')
 on conflict (code) do nothing;
+
+-- Real operating properties.
+insert into properties (code, name, brand, country) values
+  ('SL-HOTELMGMT', 'Sunlife Hotel Management', 'Sunlife Collection', 'Mauritius'),
+  ('LA-PIROGUE', 'La Pirogue Hotel', 'Sunlife Collection', 'Mauritius'),
+  ('SUGAR-BEACH', 'Sugar Beach Hotel', 'Sunlife Collection', 'Mauritius'),
+  ('LONG-BEACH', 'Long Beach Hotel', 'Sunlife Collection', 'Mauritius'),
+  ('ILE-AUX-CERF', 'Ile Aux Cerf', 'Sunlife Collection', 'Mauritius')
+on conflict (code) do nothing;
+
+-- Link every real property to the full department list.
+insert into property_departments (property_id, department_id)
+select p.id, d.id
+from properties p
+cross join departments d
+where p.code in ('SL-HOTELMGMT', 'LA-PIROGUE', 'SUGAR-BEACH', 'LONG-BEACH', 'ILE-AUX-CERF')
+on conflict (property_id, department_id) do nothing;
 
 -- Starter master control library (representative subset)
 insert into controls (control_code, title, category, is_life_safety_critical) values

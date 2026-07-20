@@ -135,17 +135,28 @@ async function main() {
     .onConflictDoNothing({ target: schema.frameworks.code });
 
   console.log("Seeding departments...");
+  // Core 11 plus 8 more grounded in the real Ambre Group board-dashboard taxonomy (Kitchen and
+  // Stewarding are tracked separately from Food & Beverage there, not folded into it) and
+  // standard hotel back-of-house functions.
   const departmentRows = [
     { code: "HOUSEKEEPING", name: "Housekeeping" },
     { code: "FOOD_BEVERAGE", name: "Food & Beverage" },
+    { code: "KITCHEN", name: "Kitchen" },
+    { code: "STEWARDING", name: "Stewarding" },
     { code: "ENGINEERING", name: "Engineering & Maintenance" },
     { code: "FRONT_OFFICE", name: "Front Office" },
+    { code: "GUEST_RELATIONS", name: "Guest Relations" },
     { code: "SECURITY", name: "Security" },
     { code: "SPA_WELLNESS", name: "Spa & Wellness" },
+    { code: "RECREATION_ENTERTAINMENT", name: "Recreation & Entertainment" },
+    { code: "PUBLIC_AREA", name: "Public Area" },
     { code: "GROUNDS_LANDSCAPING", name: "Grounds & Landscaping" },
     { code: "HUMAN_RESOURCES", name: "Human Resources" },
     { code: "FINANCE", name: "Finance" },
+    { code: "PURCHASING", name: "Purchasing & Stores" },
+    { code: "IT", name: "IT & Systems" },
     { code: "SALES_MARKETING", name: "Sales & Marketing" },
+    { code: "ADMIN", name: "Administration" },
     { code: "EXECUTIVE", name: "Executive Office" },
   ];
   await db
@@ -154,7 +165,7 @@ async function main() {
     .onConflictDoNothing({ target: schema.departments.code });
 
   console.log("Seeding demo properties (Development/Demonstration environments only)...");
-  const propertyRows = [
+  const demoPropertyRows = [
     {
       code: "SL-BEACH",
       name: "Sunlife Beach Resort & Spa",
@@ -170,8 +181,66 @@ async function main() {
   ];
   await db
     .insert(schema.properties)
-    .values(propertyRows)
+    .values(demoPropertyRows)
     .onConflictDoNothing({ target: schema.properties.code });
+
+  console.log("Seeding real operating properties...");
+  const realPropertyRows = [
+    {
+      code: "SL-HOTELMGMT",
+      name: "Sunlife Hotel Management",
+      brand: "Sunlife Collection",
+      country: "Mauritius",
+    },
+    {
+      code: "LA-PIROGUE",
+      name: "La Pirogue Hotel",
+      brand: "Sunlife Collection",
+      country: "Mauritius",
+    },
+    {
+      code: "SUGAR-BEACH",
+      name: "Sugar Beach Hotel",
+      brand: "Sunlife Collection",
+      country: "Mauritius",
+    },
+    {
+      code: "LONG-BEACH",
+      name: "Long Beach Hotel",
+      brand: "Sunlife Collection",
+      country: "Mauritius",
+    },
+    {
+      code: "ILE-AUX-CERF",
+      name: "Ile Aux Cerf",
+      brand: "Sunlife Collection",
+      country: "Mauritius",
+    },
+  ];
+  await db
+    .insert(schema.properties)
+    .values(realPropertyRows)
+    .onConflictDoNothing({ target: schema.properties.code });
+
+  console.log("Linking real properties to the full department list...");
+  const allProperties = await db
+    .select({ id: schema.properties.id, code: schema.properties.code })
+    .from(schema.properties);
+  const allDepartments = await db
+    .select({ id: schema.departments.id })
+    .from(schema.departments);
+  const realPropertyIds = allProperties
+    .filter((p) => realPropertyRows.some((r) => r.code === p.code))
+    .map((p) => p.id);
+  const propertyDepartmentRows = realPropertyIds.flatMap((propertyId) =>
+    allDepartments.map((d) => ({ propertyId, departmentId: d.id })),
+  );
+  if (propertyDepartmentRows.length > 0) {
+    await db
+      .insert(schema.propertyDepartments)
+      .values(propertyDepartmentRows)
+      .onConflictDoNothing();
+  }
 
   console.log("Seeding starter master control library (representative subset)...");
   const controlRows = [

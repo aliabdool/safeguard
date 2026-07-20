@@ -3,6 +3,7 @@
 import {
   BarChart3,
   ClipboardList,
+  FileText,
   FolderOpen,
   LayoutDashboard,
   ListChecks,
@@ -53,6 +54,7 @@ const NAV: NavSection[] = [
       { href: "/framework", label: "H&S Framework", icon: ShieldCheck },
       { href: "/audits", label: "Audits", icon: ClipboardList },
       { href: "/kpis", label: "KPIs", icon: BarChart3 },
+      { href: "/reports/export", label: "Reports & exports", icon: FileText },
     ],
   },
 ];

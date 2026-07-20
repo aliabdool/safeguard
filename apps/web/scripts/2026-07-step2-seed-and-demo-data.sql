@@ -1,5 +1,6 @@
 -- =============================================================================================
--- STEP 2 of 2 — Seed-data fixes + the 10-record sanitised demo dataset.
+-- STEP 2 of 2 — Seed-data fixes + real properties/departments + the 10-record sanitised demo
+-- dataset.
 --
 -- Run this AFTER 2026-07-step1-migrations.sql has completed successfully, as a separate paste
 -- in the Supabase SQL Editor. Prerequisite: the 6 demo accounts below must already exist
@@ -12,14 +13,17 @@
 --   auditor-demo@example.com      Marc Dubois         Internal Auditor
 --
 -- Safe to re-run: the seed section uses ON CONFLICT DO NOTHING throughout (adds only what's
--- missing — the 2 new KPI rows, mainly). The demo-data section explicitly DELETEs any existing
--- DEMO-* rows first, so it's safe whether you've never run demo data before or ran an earlier
--- (6-incident) version of it — either way you end up with exactly the current 10-incident set.
+-- missing). The demo-data section explicitly DELETEs any existing DEMO-* rows first, so it's
+-- safe whether you've never run demo data before or ran an earlier version of it.
+--
+-- If you already ran an earlier version of this file (without the real properties/departments),
+-- just run 2026-07-step3-real-properties-and-departments.sql instead — it's the incremental
+-- delta on its own and does not repeat the demo-data reload.
 -- =============================================================================================
 
 -- --------------------------------------------------------------------------------------------
--- 2a. Full reference-data seed (idempotent) — re-adds anything missing, including the new
---     TRAINEE_INCIDENTS / REPORTABLE_OSH_CASES KPI catalogue rows.
+-- 2a. Full reference-data seed (idempotent) — re-adds anything missing: the 2 new KPI catalogue
+--     rows, the expanded 19-department list, and the 5 real operating properties.
 -- --------------------------------------------------------------------------------------------
 -- Reference-data seed: mirrors src/db/seed.ts exactly (roles, frameworks, departments, two demo
 -- properties, a starter master control library, and the v1 KPI catalogue). Idempotent — every
@@ -58,26 +62,54 @@ insert into frameworks (code, name, description) values
   ('ILO_OSH', 'ILO-OSH', 'ILO-OSH 2001 guidelines.')
 on conflict (code) do nothing;
 
--- Departments
+-- Departments. Core 11 plus 8 more grounded in the real Ambre Group board-dashboard taxonomy
+-- (Kitchen and Stewarding are tracked separately from Food & Beverage there) and standard hotel
+-- back-of-house functions.
 insert into departments (code, name) values
   ('HOUSEKEEPING', 'Housekeeping'),
   ('FOOD_BEVERAGE', 'Food & Beverage'),
+  ('KITCHEN', 'Kitchen'),
+  ('STEWARDING', 'Stewarding'),
   ('ENGINEERING', 'Engineering & Maintenance'),
   ('FRONT_OFFICE', 'Front Office'),
+  ('GUEST_RELATIONS', 'Guest Relations'),
   ('SECURITY', 'Security'),
   ('SPA_WELLNESS', 'Spa & Wellness'),
+  ('RECREATION_ENTERTAINMENT', 'Recreation & Entertainment'),
+  ('PUBLIC_AREA', 'Public Area'),
   ('GROUNDS_LANDSCAPING', 'Grounds & Landscaping'),
   ('HUMAN_RESOURCES', 'Human Resources'),
   ('FINANCE', 'Finance'),
+  ('PURCHASING', 'Purchasing & Stores'),
+  ('IT', 'IT & Systems'),
   ('SALES_MARKETING', 'Sales & Marketing'),
+  ('ADMIN', 'Administration'),
   ('EXECUTIVE', 'Executive Office')
 on conflict (code) do nothing;
 
--- Demo properties (Development/Demonstration environments only)
+-- Demo properties (Development/Demonstration environments only) — the 10-incident demo dataset
+-- in demo-data.sql is scoped to SL-BEACH; leave these in place even after real properties exist.
 insert into properties (code, name, brand, country) values
   ('SL-BEACH', 'Sunlife Beach Resort & Spa', 'Sunlife Collection', 'Mauritius'),
   ('SL-LAGOON', 'Sunlife Lagoon Hotel', 'Sunlife Collection', 'Mauritius')
 on conflict (code) do nothing;
+
+-- Real operating properties.
+insert into properties (code, name, brand, country) values
+  ('SL-HOTELMGMT', 'Sunlife Hotel Management', 'Sunlife Collection', 'Mauritius'),
+  ('LA-PIROGUE', 'La Pirogue Hotel', 'Sunlife Collection', 'Mauritius'),
+  ('SUGAR-BEACH', 'Sugar Beach Hotel', 'Sunlife Collection', 'Mauritius'),
+  ('LONG-BEACH', 'Long Beach Hotel', 'Sunlife Collection', 'Mauritius'),
+  ('ILE-AUX-CERF', 'Ile Aux Cerf', 'Sunlife Collection', 'Mauritius')
+on conflict (code) do nothing;
+
+-- Link every real property to the full department list.
+insert into property_departments (property_id, department_id)
+select p.id, d.id
+from properties p
+cross join departments d
+where p.code in ('SL-HOTELMGMT', 'LA-PIROGUE', 'SUGAR-BEACH', 'LONG-BEACH', 'ILE-AUX-CERF')
+on conflict (property_id, department_id) do nothing;
 
 -- Starter master control library (representative subset)
 insert into controls (control_code, title, category, is_life_safety_critical) values
@@ -147,7 +179,15 @@ set description = 'SASB Hotels & Lodging''s material topics are Energy & Water M
 where code = 'SASB_HOTELS';
 
 -- --------------------------------------------------------------------------------------------
--- 2c. Clean up any pre-existing demo data before loading the current 10-incident set, so this
+-- 2c. Safety net: if an earlier, broken seed run ever inserted a department row using a
+--     property's name by mistake, remove it. Exact-name match only — will not touch a
+--     legitimately-named department.
+-- --------------------------------------------------------------------------------------------
+delete from public.departments
+where name in (select name from public.properties);
+
+-- --------------------------------------------------------------------------------------------
+-- 2d. Clean up any pre-existing demo data before loading the current 10-incident set, so this
 --     script is safe to run whether or not an earlier version of demo-data.sql was ever run.
 --     Cascades handle the rest: deleting an audit cascades to its findings; deleting a CAPA
 --     action cascades to its verifications; deleting an incident cascades to its persons,
@@ -158,9 +198,10 @@ delete from public.capa_actions where action_number like 'DEMO-CAPA-%';
 delete from public.incidents where incident_number like 'DEMO-%';
 
 -- --------------------------------------------------------------------------------------------
--- 2d. demo-data.sql — 10 sanitised, fictional incidents (never the real historical register,
+-- 2e. demo-data.sql — 10 sanitised, fictional incidents (never the real historical register,
 --     no real names or health data), 6 investigations, 9 CAPA actions, 40 control assessments,
---     2 audits, 3 findings.
+--     2 audits, 3 findings. Scoped to the demo property (Sunlife Beach Resort & Spa) only —
+--     none of the 5 real properties get any demo/fictional records.
 -- --------------------------------------------------------------------------------------------
 -- Demo / showcase dataset for management demonstrations.
 --
