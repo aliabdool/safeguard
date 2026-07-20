@@ -164,10 +164,13 @@ See `../docs/implementation-plan.md` §6 for the full criterion-by-criterion tra
 headers, actually run against a live local dev server in this session): the full data model and
 RLS policies, registration → admin approval → role/property/department assignment, incident
 workflow, restricted medical records, CAPA with owner≠verifier enforced at 4 independent layers,
-document versioning/approval/evidence reuse, ISO 45001 control library with the critical-gap
-override, audit programme/findings, a 22-KPI live calculation engine with FY/YTD comparison,
-security headers, rate limiting, scheduled reminders, permission-controlled export, a materiality
-module scoring GRI and IFRS S1 independently, and an IFRS S2 climate-risk register.
+document versioning/approval/evidence reuse (with a data-derived "supports N controls across M
+frameworks" reuse summary), ISO 45001 control library with the critical-gap override, audit
+programme/findings, a 22-KPI live calculation engine with FY/YTD comparison, security headers,
+rate limiting, scheduled reminders, permission-controlled export (incidents CSV, an
+auto-generated board narrative, and an ISAE-3000-aligned assurance readiness pack — all
+audit-logged), a materiality module scoring GRI and IFRS S1 independently, and an IFRS S2
+climate-risk register.
 
 **Not yet run against live infrastructure** (needs a real Supabase project + Cloudflare account,
 neither of which existed in the environment this was built in): the RLS integration test suite,
