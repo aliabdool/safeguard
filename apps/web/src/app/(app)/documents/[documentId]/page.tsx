@@ -1,12 +1,19 @@
 import { notFound } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 
 import { ApproveVersionForm, EvidenceLinkForm } from "./approve-and-evidence-forms";
 import { VersionUpload } from "./version-upload";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDb } from "@/db";
-import { documentVersions, documents, evidenceLinks } from "@/db/schema";
+import {
+  controlAssessments,
+  controlFrameworkMappings,
+  documentVersions,
+  documents,
+  evidenceLinks,
+} from "@/db/schema";
+import { computeEvidenceReuseSummary } from "@/server/documents/evidence-reuse";
 
 export default async function DocumentDetailPage({
   params,
@@ -38,6 +45,41 @@ export default async function DocumentDetailPage({
         .from(evidenceLinks)
         .where(eq(evidenceLinks.documentVersionId, currentVersion.id))
     : [];
+
+  const controlAssessmentIds = evidence
+    .filter((e) => e.linkedEntityType === "control_assessment")
+    .map((e) => e.linkedEntityId);
+
+  const assessmentRows = controlAssessmentIds.length
+    ? await db
+        .select({ id: controlAssessments.id, controlId: controlAssessments.controlId })
+        .from(controlAssessments)
+        .where(inArray(controlAssessments.id, controlAssessmentIds))
+    : [];
+  const controlAssessmentControlIds = new Map(assessmentRows.map((a) => [a.id, a.controlId]));
+
+  const controlIds = [...new Set(assessmentRows.map((a) => a.controlId))];
+  const mappingRows = controlIds.length
+    ? await db
+        .select({
+          controlId: controlFrameworkMappings.controlId,
+          frameworkId: controlFrameworkMappings.frameworkId,
+        })
+        .from(controlFrameworkMappings)
+        .where(inArray(controlFrameworkMappings.controlId, controlIds))
+    : [];
+  const controlFrameworkIds = new Map<string, string[]>();
+  for (const row of mappingRows) {
+    const list = controlFrameworkIds.get(row.controlId) ?? [];
+    list.push(row.frameworkId);
+    controlFrameworkIds.set(row.controlId, list);
+  }
+
+  const reuseSummary = computeEvidenceReuseSummary({
+    links: evidence,
+    controlAssessmentControlIds,
+    controlFrameworkIds,
+  });
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -95,6 +137,26 @@ export default async function DocumentDetailPage({
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {reuseSummary.totalLinks > 0 ? (
+              <p className="bg-accent rounded-md p-3 text-sm">
+                This document version supports{" "}
+                <span className="font-semibold">{reuseSummary.totalLinks}</span> record
+                {reuseSummary.totalLinks === 1 ? "" : "s"} across{" "}
+                <span className="font-semibold">{reuseSummary.distinctEntityTypes}</span>{" "}
+                evidence type{reuseSummary.distinctEntityTypes === 1 ? "" : "s"}
+                {reuseSummary.distinctControls > 0 ? (
+                  <>
+                    , including{" "}
+                    <span className="font-semibold">{reuseSummary.distinctControls}</span>{" "}
+                    control{reuseSummary.distinctControls === 1 ? "" : "s"} across{" "}
+                    <span className="font-semibold">{reuseSummary.distinctFrameworks}</span>{" "}
+                    framework{reuseSummary.distinctFrameworks === 1 ? "" : "s"}
+                  </>
+                ) : null}
+                . One approved document, reused as evidence everywhere it genuinely applies —
+                no re-uploading the same policy for each framework.
+              </p>
+            ) : null}
             <EvidenceLinkForm documentId={documentId} documentVersionId={currentVersion.id} />
             <ul className="flex flex-col gap-1 text-sm">
               {evidence.map((e) => (

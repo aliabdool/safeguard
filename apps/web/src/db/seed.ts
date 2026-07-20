@@ -115,7 +115,12 @@ async function main() {
     {
       code: "SASB_HOTELS",
       name: "SASB Hotels & Lodging",
-      description: "SASB Hotels & Lodging standard, H&S-relevant metrics.",
+      description:
+        "SASB Hotels & Lodging's material topics are Energy & Water Management, " +
+        "Ecosystem Protection & Climate Adaptation, and Fair Labor Practices — there is no " +
+        "standalone occupational H&S topic in this standard. Controls mapped here support Fair " +
+        "Labor Practices indirectly (workforce health & safety conditions); this is not a " +
+        "formal SASB H&S metric and should not be presented as one.",
     },
     {
       code: "UNGC",

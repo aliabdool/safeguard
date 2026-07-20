@@ -30,7 +30,7 @@ insert into frameworks (code, name, description) values
   ('GRI403', 'GRI 403', 'GRI 403: Occupational Health and Safety.'),
   ('IFRS_S1', 'IFRS S1', 'General sustainability-related disclosures, H&S-relevant subset.'),
   ('IFRS_S2', 'IFRS S2', 'Climate-related disclosures, H&S intersection (heat stress, business continuity).'),
-  ('SASB_HOTELS', 'SASB Hotels & Lodging', 'SASB Hotels & Lodging standard, H&S-relevant metrics.'),
+  ('SASB_HOTELS', 'SASB Hotels & Lodging', 'SASB Hotels & Lodging''s material topics are Energy & Water Management, Ecosystem Protection & Climate Adaptation, and Fair Labor Practices — there is no standalone occupational H&S topic in this standard. Controls mapped here support Fair Labor Practices indirectly (workforce health & safety conditions); this is not a formal SASB H&S metric and should not be presented as one.'),
   ('UNGC', 'UN Global Compact', 'UN Global Compact Principles 1-2.'),
   ('ILO_OSH', 'ILO-OSH', 'ILO-OSH 2001 guidelines.')
 on conflict (code) do nothing;
