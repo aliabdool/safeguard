@@ -94,6 +94,26 @@ setup instructions in README.md are left in place for whenever `@opennextjs/clou
 Node-runtime middleware support, or the middleware is refactored. Status: accepted for the
 demonstration/showcase deployment only.
 
+**ADR-0008 — `scripts/demo-data.sql`: real seeded rows for a management showcase, never
+UI-level fabrication.** Context: management asked to see the app populated the way the original
+static-HTML prototype was, with realistic incidents/controls/audits. The project's founding
+constraint is that KPI figures, dashboards and lists must always be computed live from real
+database rows — never hard-coded in the UI. Decision: satisfy the request by inserting genuine
+rows into the real tables (`incidents`, `investigations`, `capa_actions`, `control_assessments`,
+`audits`, `audit_findings`) via a hand-authored SQL script, attributed to 6 real registered
+accounts spanning the role model (Super Admin, H&S Officer, Nurse, Duty Manager, Executive
+read-only, Internal Auditor) — not to synthetic/anonymous users. Every dashboard, KPI tile and
+heatmap therefore computes this data exactly as it would real operational data; nothing in the
+frontend was changed to display it. Deliberately excludes `documents`/`document_versions`/`files`
+rows, since those reference an actual object in Supabase Storage with a checksum — fabricating
+those rows would create "approved" evidence with nothing real behind it, a different and worse
+kind of fabrication than a demo incident record. The medical-permission grant is deliberately
+given only to the Nurse account, not the H&S Officer or Duty Manager, demonstrating (rather than
+just documenting) that medical-data access is a permission independent of role. CAPA/verification
+owner and verifier are always different accounts, demonstrating the segregation-of-duties rule
+rather than working around it for convenience. Status: accepted, showcase-only — this script must
+never be run against a production environment with real incident/personal data.
+
 ## 3. What could not be completed without external accounts/credentials
 
 Per the explicit pause condition ("a required secret, domain, API key or external account is

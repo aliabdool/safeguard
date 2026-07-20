@@ -88,6 +88,18 @@ real users are onboarded — there is no separate "seed users" path, by design (
 back-door for creating pre-approved accounts would be a real security regression, not a
 convenience).
 
+### Optional: populated demo dataset for showcases
+
+`scripts/demo-data.sql` (see ADR-0008, `docs/implementation-plan.md`) inserts a realistic set of
+**real** rows — incidents, investigations, CAPA actions, control assessments, an audit with
+findings — attributed to 6 real registered accounts, so every dashboard/KPI/heatmap computes live
+from this data exactly as it would from genuine operational data. It does **not** insert
+`documents`/`file` rows, since those require an actual object in Supabase Storage — upload a few
+real files through `/documents` instead. Run it (via the SQL Editor, same as `seed.sql`) only
+after registering the 6 named demo accounts documented at the top of the script and promoting the
+first one to Super Administrator. Not run automatically by `db:seed` — this is showcase-only data,
+never appropriate for a production environment.
+
 ## Cloudflare deployment
 
 ```bash
