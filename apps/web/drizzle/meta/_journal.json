@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1784376597702,
+      "tag": "0000_init_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784376604769,
+      "tag": "0001_auth_helpers_and_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784378656419,
+      "tag": "0002_control_assessments_unique_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784534985318,
+      "tag": "0003_trainee_reportable_injury_mechanism",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784535293941,
+      "tag": "0004_materiality_and_climate_risk",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784535415011,
+      "tag": "0005_materiality_climate_risk_rls",
+      "breakpoints": true
+    }
+  ]
+}
