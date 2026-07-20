@@ -1,0 +1,159 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Palette taken directly from the SafeGuard design brief (reference/prototype), not invented:
+ * deep ocean navy ink, lagoon teal primary, Sun-brand amber accent, cool paper background.
+ * Severity/status scale colors (--sev1..--sev5) are additive tokens the brief specifies for
+ * incident/finding severity chips — not part of the standard shadcn set.
+ */
+:root {
+  --radius: 0.625rem;
+  --ink: #0b2237;
+  --teal: #0f5e68;
+  --teal-mid: #1b8a97;
+  --teal-soft: #e3eff0;
+  --paper: #f4f7f8;
+  --surface: #ffffff;
+  --line: #d9e2e6;
+  --muted-ink: #5b7080;
+  --sun: #e9a13b;
+  --sev1: #3e8e6e;
+  --sev2: #c7a00e;
+  --sev3: #da7b2b;
+  --sev4: #c2432b;
+  --sev5: #7e1e30;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--teal);
+  --primary-foreground: #ffffff;
+  --secondary: var(--teal-soft);
+  --secondary-foreground: var(--teal);
+  --muted: #eef2f3;
+  --muted-foreground: var(--muted-ink);
+  --accent: var(--teal-soft);
+  --accent-foreground: var(--teal);
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --success: var(--sev1);
+  --success-foreground: #ffffff;
+  --warning: var(--sun);
+  --warning-foreground: var(--ink);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--teal-mid);
+  --sidebar: var(--ink);
+  --sidebar-foreground: #b9cdd4;
+  --sidebar-primary: var(--teal);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.07);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: var(--teal-mid);
+}
+
+.dark {
+  --background: #0f1c27;
+  --foreground: #eef2f3;
+  --card: #16262f;
+  --card-foreground: #eef2f3;
+  --popover: #16262f;
+  --popover-foreground: #eef2f3;
+  --primary: var(--sun);
+  --primary-foreground: #1a1305;
+  --secondary: #1e333c;
+  --secondary-foreground: #eef2f3;
+  --muted: #1b2b34;
+  --muted-foreground: #9db2bc;
+  --accent: #1e3a41;
+  --accent-foreground: #eef2f3;
+  --destructive: #e2564a;
+  --destructive-foreground: #1a0a08;
+  --success: var(--sev1);
+  --success-foreground: #08150f;
+  --warning: var(--sun);
+  --warning-foreground: #1a1305;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: var(--sun);
+  --sidebar: #081420;
+  --sidebar-foreground: #b9cdd4;
+  --sidebar-primary: var(--sun);
+  --sidebar-primary-foreground: #1a1305;
+  --sidebar-accent: rgba(255, 255, 255, 0.07);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: var(--sun);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sev1: var(--sev1);
+  --color-sev2: var(--sev2);
+  --color-sev3: var(--sev3);
+  --color-sev4: var(--sev4);
+  --color-sev5: var(--sev5);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-sora);
+  --font-mono: ui-monospace, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
+  }
+  a,
+  button {
+    @apply transition-colors duration-150;
+  }
+}
