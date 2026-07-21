@@ -1,6 +1,12 @@
 import type { Request } from "express";
 
-import type { AuthContext, RoleCode } from "../pure/permissions";
+import type { AuthContext, MedicalPermissionAction, RoleCode } from "../pure/permissions";
+
+const MEDICAL_PERMISSION_CODES: Record<MedicalPermissionAction, string> = {
+  view: "view_medical_notes",
+  edit: "edit_medical_notes",
+  export: "export_medical_notes",
+};
 
 /**
  * Builds the request's AuthContext from Catalyst's Data Store — the single place that resolves
@@ -32,11 +38,11 @@ export async function loadAuthContext(catalystApp: CatalystApp): Promise<AuthCon
       roleCodes: [],
       propertyIds: [],
       departmentAccess: new Map(),
-      hasMedicalPermission: false,
+      medicalPermissions: new Set(),
     };
   }
 
-  const [roleRows, propertyRows, departmentRows, medicalPermRow] = await Promise.all([
+  const [roleRows, propertyRows, departmentRows, medicalPermRows] = await Promise.all([
     zcql.executeZCQLQuery(
       `select Roles.code from UserRoles left join Roles on UserRoles.role_id = Roles.ROWID where UserRoles.user_id = '${userRow.ROWID}'`,
     ),
@@ -46,8 +52,10 @@ export async function loadAuthContext(catalystApp: CatalystApp): Promise<AuthCon
     datastore
       .table("UserDepartmentAccess")
       .getRows({ criteria: `UserDepartmentAccess.user_id == '${userRow.ROWID}'` }),
+    // All three medical permission codes in one query — each is a fully independent grant, none
+    // implied by role, none implied by the others (holding "view" grants nothing toward "export").
     zcql.executeZCQLQuery(
-      `select UserPermissions.ROWID from UserPermissions where UserPermissions.user_id = '${userRow.ROWID}' and UserPermissions.permission_code = 'view_medical_notes' and UserPermissions.revoked_at is null`,
+      `select UserPermissions.permission_code from UserPermissions where UserPermissions.user_id = '${userRow.ROWID}' and UserPermissions.permission_code in ('view_medical_notes', 'edit_medical_notes', 'export_medical_notes') and UserPermissions.revoked_at is null`,
     ),
   ]);
 
@@ -58,13 +66,24 @@ export async function loadAuthContext(catalystApp: CatalystApp): Promise<AuthCon
     departmentAccess.set(row.property_id, set);
   }
 
+  const grantedCodes = new Set(
+    (medicalPermRows as Array<{ UserPermissions: { permission_code: string } }>).map(
+      (r) => r.UserPermissions.permission_code,
+    ),
+  );
+  const medicalPermissions = new Set<MedicalPermissionAction>(
+    (Object.keys(MEDICAL_PERMISSION_CODES) as MedicalPermissionAction[]).filter((action) =>
+      grantedCodes.has(MEDICAL_PERMISSION_CODES[action]),
+    ),
+  );
+
   return {
     userId: userRow.ROWID,
     status: userRow.status,
     roleCodes: (roleRows as Array<{ Roles: { code: RoleCode } }>).map((r) => r.Roles.code),
     propertyIds: (propertyRows as Array<{ property_id: string }>).map((r) => r.property_id),
     departmentAccess,
-    hasMedicalPermission: (medicalPermRow as unknown[]).length > 0,
+    medicalPermissions,
   };
 }
 

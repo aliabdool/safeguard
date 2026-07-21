@@ -1,6 +1,14 @@
 import type { NextFunction, Request, Response } from "express";
 
-import { AuthError, hasPropertyAccess, isAdmin, type AuthContext, type RoleCode } from "../pure/permissions";
+import {
+  AuthError,
+  hasMedicalPermission,
+  hasPropertyAccess,
+  isAdmin,
+  type AuthContext,
+  type MedicalPermissionAction,
+  type RoleCode,
+} from "../pure/permissions";
 import { catalystAppFromRequest, loadAuthContext, type CatalystApp } from "./auth-context";
 import { writeAuditLog } from "./audit-log";
 
@@ -46,20 +54,18 @@ export function requireRole(allowed: RoleCode[]) {
 }
 
 /**
- * Route-level explicit-permission gate — for the sensitive actions in brief §14
- * (view/export medical notes, generate assurance pack, approve documents group-wide, verify
- * CAPA, close critical findings, edit framework scoring, change permissions). Every use of this
- * ALSO writes an AuditTrail row — sensitive access is never silent, per Improvement 4 and §14.
+ * Route-level explicit-permission gate — for the sensitive, non-medical actions in brief §14
+ * (generate assurance pack, approve documents group-wide, verify CAPA, close critical findings,
+ * edit framework scoring, change permissions). For medical notes specifically, use
+ * requireMedicalPermission() below — it's typed to the three actual medical actions rather than
+ * an arbitrary string, so a typo in a permission code can't silently create a hole.
  */
 export function requireExplicitPermission(permissionCode: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     const safeReq = req as SafeGuardRequest;
     const ctx = safeReq.authContext;
 
-    const granted =
-      permissionCode === "view_medical_notes" || permissionCode === "export_medical_notes"
-        ? ctx.hasMedicalPermission
-        : await hasExplicitPermission(safeReq.catalystApp, ctx.userId, permissionCode);
+    const granted = await hasExplicitPermission(safeReq.catalystApp, ctx.userId, permissionCode);
 
     if (!granted) {
       res.status(403).json({ error: `Missing required permission: ${permissionCode}` });
@@ -74,6 +80,39 @@ export function requireExplicitPermission(permissionCode: string) {
       userAgent: req.get("user-agent") ?? null,
     });
 
+    next();
+  };
+}
+
+/**
+ * Medical-note access gate (brief §Improvement 4, requirements #5-#7). Deliberately separate
+ * from requireExplicitPermission(): medical access is checked from AuthContext.medicalPermissions
+ * (already loaded once per request in withAuthContext — no extra Data Store round trip), and
+ * EVERY use — granted or denied — writes an AuditTrail row, not just successful ones. A denied
+ * attempt to view a colleague's clinical notes is itself something the organisation wants a
+ * record of.
+ */
+export function requireMedicalPermission(action: MedicalPermissionAction) {
+  const permissionCode = `${action}_medical_notes`;
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const safeReq = req as SafeGuardRequest;
+    const ctx = safeReq.authContext;
+    const granted = hasMedicalPermission(ctx, action);
+
+    await writeAuditLog(safeReq.catalystApp, {
+      actorUserId: ctx.userId,
+      eventType: granted ? "medical_notes_access" : "medical_notes_access_denied",
+      entityType: "MedicalNotes",
+      entityId: typeof req.params.incidentId === "string" ? req.params.incidentId : null,
+      reason: permissionCode,
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+    });
+
+    if (!granted) {
+      res.status(403).json({ error: `Missing required permission: ${permissionCode}` });
+      return;
+    }
     next();
   };
 }

@@ -1,0 +1,120 @@
+{
+  "_comment": "Incident + investigation + medical-isolation tables. Ported from apps/web/src/db/schema/incidents.ts, extended per the Catalyst migration brief (IncidentOSHReportability and MedicalNotes are now their own tables rather than columns/JSON on Incidents). person_type values are the six in functions/shared/pure/incident-workflow.ts — validated in code (Data Store has no enum column type).",
+  "tables": [
+    {
+      "table_name": "Incidents",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "incident_number", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true, "comment": "The row-scoping column — every query MUST run through propertyScopeClause()." },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "notNull": true },
+        { "column_name": "location_detail", "type": "text", "nullable": true },
+        { "column_name": "occurred_at", "type": "datetime", "notNull": true },
+        { "column_name": "reported_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "person_event_type", "type": "text", "notNull": true, "comment": "employee | trainee | guest | contractor | near_miss | unsafe_condition — validated against PERSON_EVENT_TYPES in incident-workflow.ts." },
+        { "column_name": "incident_type", "type": "text", "notNull": true },
+        { "column_name": "injury_mechanism_id", "type": "lookup", "references": "InjuryMechanisms", "nullable": true },
+        { "column_name": "injury_type", "type": "text", "nullable": true },
+        { "column_name": "body_part", "type": "text", "nullable": true },
+        { "column_name": "outcome", "type": "text", "notNull": true },
+        { "column_name": "actual_severity", "type": "bigint", "notNull": true },
+        { "column_name": "potential_severity", "type": "bigint", "notNull": true },
+        { "column_name": "is_high_potential", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "hospital_referral", "type": "boolean", "notNull": true, "default": false, "comment": "INDEPENDENT of reportable_status on IncidentOSHReportability — never derive one from the other. See incident-workflow.ts defaultOshReportableStatus()." },
+        { "column_name": "lost_workdays", "type": "bigint", "notNull": true, "default": 0 },
+        { "column_name": "restricted_duty_days", "type": "bigint", "notNull": true, "default": 0 },
+        { "column_name": "incident_cost", "type": "decimal", "notNull": true, "default": 0 },
+        { "column_name": "business_interruption_days", "type": "bigint", "notNull": true, "default": 0 },
+        { "column_name": "immediate_actions", "type": "text", "nullable": true },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "reported", "comment": "reported | investigating | corrective_action | verifying | closed — validated against isValidStatusTransition() in incident-workflow.ts." },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "updated_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "IncidentPersons",
+      "scope": "Org",
+      "comment": "Person-type-specific detail, one row per affected person. `details` is JSON serialised to text (Data Store has no JSON column type) — validated against the same person-details Zod schema shape as the Supabase build before being stored, never trusted just because it round-trips.",
+      "columns": [
+        { "column_name": "incident_id", "type": "lookup", "references": "Incidents", "notNull": true },
+        { "column_name": "person_event_type", "type": "text", "notNull": true },
+        { "column_name": "is_primary", "type": "boolean", "notNull": true, "default": true },
+        { "column_name": "full_name", "type": "text", "nullable": true },
+        { "column_name": "employee_or_reference_no", "type": "text", "nullable": true },
+        { "column_name": "details_json", "type": "text", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "IncidentInvestigation",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "incident_id", "type": "lookup", "references": "Incidents", "notNull": true, "unique": true },
+        { "column_name": "investigator_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "event_reconstruction", "type": "text", "nullable": true },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "assigned" },
+        { "column_name": "assigned_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "completed_at", "type": "datetime", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "IncidentFiveWhys",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "investigation_id", "type": "lookup", "references": "IncidentInvestigation", "notNull": true },
+        { "column_name": "sequence", "type": "bigint", "notNull": true },
+        { "column_name": "question", "type": "text", "notNull": true },
+        { "column_name": "answer", "type": "text", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "IncidentRootCauses",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "investigation_id", "type": "lookup", "references": "IncidentInvestigation", "notNull": true },
+        { "column_name": "cause_type", "type": "text", "notNull": true, "comment": "immediate | root" },
+        { "column_name": "category", "type": "lookup", "references": "RootCauseCategories", "nullable": true },
+        { "column_name": "description", "type": "text", "notNull": true }
+      ]
+    },
+    {
+      "table_name": "IncidentWitnesses",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "investigation_id", "type": "lookup", "references": "IncidentInvestigation", "notNull": true },
+        { "column_name": "name", "type": "text", "notNull": true },
+        { "column_name": "role", "type": "text", "nullable": true },
+        { "column_name": "statement", "type": "text", "nullable": true },
+        { "column_name": "contact", "type": "text", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "IncidentOSHReportability",
+      "scope": "Org",
+      "comment": "The statutory-notification DETERMINATION, as its own record — separate from Incidents.hospital_referral by design (brief requirement #3 / test case). One row per incident; who decided and when is captured explicitly rather than just overwriting a status column, so the determination itself is auditable.",
+      "columns": [
+        { "column_name": "incident_id", "type": "lookup", "references": "Incidents", "notNull": true, "unique": true },
+        { "column_name": "reportable_status", "type": "text", "notNull": true, "default": "pending_determination", "comment": "yes | no | pending_determination" },
+        { "column_name": "reporting_authority", "type": "text", "nullable": true },
+        { "column_name": "reporting_deadline", "type": "date", "nullable": true },
+        { "column_name": "date_submitted", "type": "date", "nullable": true },
+        { "column_name": "submission_reference", "type": "text", "nullable": true },
+        { "column_name": "determined_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "determined_at", "type": "datetime", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "MedicalNotes",
+      "scope": "Org",
+      "comment": "Deliberately isolated: never joined into normal incident list/detail queries. Every access — read, write, or export — goes through requireMedicalPermission()/hasMedicalPermission() and writes an AuditTrail row, granted or denied (brief requirements #4-#7). No role, including SUPER_ADMIN or GROUP_HS_ADMIN, implies access.",
+      "columns": [
+        { "column_name": "incident_id", "type": "lookup", "references": "Incidents", "notNull": true },
+        { "column_name": "incident_person_id", "type": "lookup", "references": "IncidentPersons", "nullable": true },
+        { "column_name": "clinical_notes", "type": "text", "notNull": true },
+        { "column_name": "created_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "updated_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "updated_at", "type": "datetime", "nullable": true }
+      ]
+    }
+  ]
+}

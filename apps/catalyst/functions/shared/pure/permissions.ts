@@ -1,9 +1,10 @@
 /**
- * Pure permission-decision logic — no "server-only", no DB/network imports. Split out from
- * index.ts specifically so it's unit-testable under Vitest (the `server-only` package throws
- * unconditionally unless the bundler declares the `react-server` export condition, which plain
- * Node/Vitest doesn't — see the test file next to this one). Mirrors the RLS predicates in
- * drizzle/0001_auth_helpers_and_rls.sql; keep the two in sync if either changes.
+ * Pure permission-decision logic — no Data Store/network imports, unit-testable in plain Node.
+ * Ported from the Supabase build's src/server/permissions/pure.ts, then deliberately extended
+ * here (this file is no longer byte-identical to its origin, unlike the other files in this
+ * directory) to satisfy Zoho Catalyst Migration Improvement 4: medical-note access is now three
+ * distinct explicit permissions (view/edit/export), not one flag — each independently grantable
+ * and independently revocable, per the brief's own §Improvement 4 and §14.
  */
 
 export type RoleCode =
@@ -18,6 +19,8 @@ export type RoleCode =
   | "EXECUTIVE_READONLY"
   | "EXTERNAL_AUDITOR_READONLY";
 
+export type MedicalPermissionAction = "view" | "edit" | "export";
+
 export interface AuthContext {
   userId: string;
   status: "pending_approval" | "active" | "suspended" | "rejected";
@@ -25,7 +28,11 @@ export interface AuthContext {
   propertyIds: string[];
   /** propertyId -> departmentIds granted within it */
   departmentAccess: Map<string, Set<string>>;
-  hasMedicalPermission: boolean;
+  /** view_medical_notes / edit_medical_notes / export_medical_notes — explicit UserPermissions
+   * grants only. Never derived from role, never bypassed by isAdmin(). A Super Admin or H&S
+   * Manager with none of these has none of these — see hasMedicalPermission() below, which
+   * deliberately does not call isAdmin() the way hasPropertyAccess() does. */
+  medicalPermissions: Set<MedicalPermissionAction>;
 }
 
 export const ADMIN_ROLES: RoleCode[] = ["SUPER_ADMIN", "GROUP_HS_ADMIN"];
@@ -54,6 +61,16 @@ export function hasDepartmentAccess(
   if (departmentId === null) return true;
   if (isAdmin(ctx)) return true;
   return ctx.departmentAccess.get(propertyId)?.has(departmentId) ?? false;
+}
+
+/**
+ * Medical-note access — deliberately NOT short-circuited by isAdmin() or any role check.
+ * Brief requirement #6: "Do not grant medical-note access by role alone, even to admin or H&S
+ * manager." A user needs the specific UserPermissions row for the specific action; nothing else
+ * substitutes for it, ever.
+ */
+export function hasMedicalPermission(ctx: AuthContext, action: MedicalPermissionAction): boolean {
+  return ctx.medicalPermissions.has(action);
 }
 
 export class AuthError extends Error {

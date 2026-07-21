@@ -64,7 +64,11 @@ and `apps/catalyst/data-store-schema/README.md`.
 2. Project scaffold: pure-logic port + Data Store schema (identity/access, master data) — done.
 3. Permission + audit middleware — done.
 4. Batch dashboard summary endpoint — done.
-5. Incidents + medical-note isolation.
+5. Incidents + medical-note isolation — done. Three independent medical permissions
+   (view/edit/export, never implied by role — not even Super Admin or a Property H&S Officer),
+   every access audit-logged whether granted or denied, hospital referral and statutory
+   OSH-reportability kept as fully separate records. Verified with 20 new tests (99 total)
+   including the exact scenarios management asked for by name.
 6. CAPA module (owner ≠ verifier).
 7. Documents/evidence library + evidence-reuse.
 8. Controls/frameworks + critical-gap override persistence.

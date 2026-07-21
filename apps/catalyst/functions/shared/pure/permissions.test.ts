@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   hasAnyRole,
   hasDepartmentAccess,
+  hasMedicalPermission,
   hasPropertyAccess,
   isAdmin,
   type AuthContext,
@@ -20,7 +21,7 @@ function makeCtx(overrides: Partial<AuthContext> = {}): AuthContext {
     roleCodes: [],
     propertyIds: [],
     departmentAccess: new Map(),
-    hasMedicalPermission: false,
+    medicalPermissions: new Set(),
     ...overrides,
   };
 }
@@ -89,5 +90,37 @@ describe("hasDepartmentAccess", () => {
     const departmentAccess = new Map([[PROPERTY_A, new Set([DEPT_HOUSEKEEPING])]]);
     const ctx = makeCtx({ roleCodes: ["DEPARTMENT_MANAGER"], departmentAccess });
     expect(hasDepartmentAccess(ctx, PROPERTY_B, DEPT_HOUSEKEEPING)).toBe(false);
+  });
+});
+
+describe("hasMedicalPermission", () => {
+  it("a Super Admin with no explicit medical grant has no medical access — role never substitutes", () => {
+    const ctx = makeCtx({ roleCodes: ["SUPER_ADMIN"], medicalPermissions: new Set() });
+    expect(hasMedicalPermission(ctx, "view")).toBe(false);
+    expect(hasMedicalPermission(ctx, "edit")).toBe(false);
+    expect(hasMedicalPermission(ctx, "export")).toBe(false);
+  });
+  it("a Property H&S Officer with no explicit medical grant has no medical access", () => {
+    const ctx = makeCtx({ roleCodes: ["PROPERTY_HS_OFFICER"], medicalPermissions: new Set() });
+    expect(hasMedicalPermission(ctx, "view")).toBe(false);
+  });
+  it("a Nurse account is only granted what was explicitly given — view without edit/export", () => {
+    const ctx = makeCtx({ roleCodes: ["NURSE_MEDICAL"], medicalPermissions: new Set(["view"]) });
+    expect(hasMedicalPermission(ctx, "view")).toBe(true);
+    expect(hasMedicalPermission(ctx, "edit")).toBe(false);
+    expect(hasMedicalPermission(ctx, "export")).toBe(false);
+  });
+  it("the three medical actions are independently grantable", () => {
+    const ctx = makeCtx({
+      roleCodes: ["NURSE_MEDICAL"],
+      medicalPermissions: new Set(["view", "edit", "export"]),
+    });
+    expect(hasMedicalPermission(ctx, "view")).toBe(true);
+    expect(hasMedicalPermission(ctx, "edit")).toBe(true);
+    expect(hasMedicalPermission(ctx, "export")).toBe(true);
+  });
+  it("a role with zero roles at all can still have medical access if explicitly granted", () => {
+    const ctx = makeCtx({ roleCodes: [], medicalPermissions: new Set(["view"]) });
+    expect(hasMedicalPermission(ctx, "view")).toBe(true);
   });
 });
