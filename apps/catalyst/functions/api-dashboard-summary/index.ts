@@ -88,18 +88,25 @@ async function getSafetyStatusOverview(
   financialYear: string,
 ) {
   const { start, end } = fyBounds(financialYear);
+  // Joined to IncidentOSHReportability for reportable_status — that column lives on its own
+  // table since Phase 5 (kept deliberately separate from hospital_referral), not on Incidents
+  // itself. person_event_type is the actual Phase 5 column name (this query originally predated
+  // that schema and used stale names — fixed here, before any table gets built around it).
   const rows = (await zcql.executeZCQLQuery(
-    `select Incidents.person_type, Incidents.outcome, Incidents.hospital_referral, Incidents.reportable_status, count(Incidents.ROWID) as n
+    `select Incidents.person_event_type, Incidents.outcome, Incidents.hospital_referral, IncidentOSHReportability.reportable_status, count(Incidents.ROWID) as n
      from Incidents
+     left join IncidentOSHReportability on Incidents.ROWID = IncidentOSHReportability.incident_id
      where ${scope} and Incidents.occurred_at between '${start}' and '${end}'
-     group by Incidents.person_type, Incidents.outcome, Incidents.hospital_referral, Incidents.reportable_status`,
+     group by Incidents.person_event_type, Incidents.outcome, Incidents.hospital_referral, IncidentOSHReportability.reportable_status`,
   )) as Array<{
     Incidents: {
-      person_type: string;
+      person_event_type: string;
       outcome: string;
       hospital_referral: string;
-      reportable_status: string;
       n: string;
+    };
+    IncidentOSHReportability: {
+      reportable_status: string;
     };
   }>;
 
@@ -111,14 +118,14 @@ async function getSafetyStatusOverview(
   let unsafeConditions = 0;
   let serious = 0;
 
-  for (const { Incidents: r } of rows) {
+  for (const { Incidents: r, IncidentOSHReportability: osh } of rows) {
     const n = Number(r.n);
     total += n;
     if (r.outcome === "fatality") fatalities += n;
     if (r.hospital_referral === "true") hospitalReferrals += n;
-    if (r.reportable_status === "yes") statutoryReportable += n;
-    if (r.person_type === "near_miss") nearMisses += n;
-    if (r.person_type === "unsafe_condition") unsafeConditions += n;
+    if (osh?.reportable_status === "yes") statutoryReportable += n;
+    if (r.person_event_type === "near_miss") nearMisses += n;
+    if (r.person_event_type === "unsafe_condition") unsafeConditions += n;
     if (r.outcome === "fatality" || r.outcome === "hospitalisation" || r.outcome === "lost_time_injury") {
       serious += n;
     }
