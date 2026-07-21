@@ -1,6 +1,7 @@
 import "server-only";
 
 import { eq, gt, inArray } from "drizzle-orm";
+import { after } from "next/server";
 
 import { getDb } from "@/db";
 import { incidents, kpiCalculations, kpiDefinitions } from "@/db/schema";
@@ -152,23 +153,28 @@ export async function calculateKpi(
   // Snapshot for reconciliation (docs/kpi-catalogue.md §5) — append-only by convention (each
   // calculation inserts a new row rather than updating a previous snapshot), so a historical
   // dashboard figure can always be reconstructed exactly as it was calculated at the time.
-  await db.insert(kpiCalculations).values({
-    kpiId: definition.id,
-    propertyId: filters.propertyId ?? null,
-    departmentId: filters.departmentId ?? null,
-    periodStart: currentPeriod.start.toISOString().slice(0, 10),
-    periodEnd: currentPeriod.end.toISOString().slice(0, 10),
-    comparisonPeriodStart: comparisonPeriodFull.start.toISOString().slice(0, 10),
-    comparisonPeriodEnd: comparisonEnd.toISOString().slice(0, 10),
-    currentValue: result.currentValue != null ? String(result.currentValue) : null,
-    comparisonValue: result.comparisonValue != null ? String(result.comparisonValue) : null,
-    varianceAbs: variance.absolute != null ? String(variance.absolute) : null,
-    variancePct: variance.percent != null ? String(variance.percent) : null,
-    dataThroughDate: asOf.toISOString().slice(0, 10),
-    dataQualityStatus: result.dataQualityStatus,
-    includedRecordIds: result.includedRecordIds,
-    excludedRecordIds: result.excludedRecordIds,
-  });
+  // Deferred via `after()` so the dashboard's response isn't held up waiting on ~18 of these
+  // writes in sequence — it still reliably runs (Next.js guarantees `after()` callbacks complete
+  // even though the response has already been sent), just off the page-load critical path.
+  after(() =>
+    db.insert(kpiCalculations).values({
+      kpiId: definition.id,
+      propertyId: filters.propertyId ?? null,
+      departmentId: filters.departmentId ?? null,
+      periodStart: currentPeriod.start.toISOString().slice(0, 10),
+      periodEnd: currentPeriod.end.toISOString().slice(0, 10),
+      comparisonPeriodStart: comparisonPeriodFull.start.toISOString().slice(0, 10),
+      comparisonPeriodEnd: comparisonEnd.toISOString().slice(0, 10),
+      currentValue: result.currentValue != null ? String(result.currentValue) : null,
+      comparisonValue: result.comparisonValue != null ? String(result.comparisonValue) : null,
+      varianceAbs: variance.absolute != null ? String(variance.absolute) : null,
+      variancePct: variance.percent != null ? String(variance.percent) : null,
+      dataThroughDate: asOf.toISOString().slice(0, 10),
+      dataQualityStatus: result.dataQualityStatus,
+      includedRecordIds: result.includedRecordIds,
+      excludedRecordIds: result.excludedRecordIds,
+    }),
+  );
 
   return {
     kpiCode,
