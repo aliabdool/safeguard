@@ -1,0 +1,5 @@
+{
+  "_comment": "TEMPLATE — edit after deploying Package A (Functions) to your own Zoho Catalyst project. apiBase is the base URL Catalyst assigns your deployed Advanced I/O functions (Console -> Functions -> [any function] shows the invoke URL; apiBase is that URL's origin + path prefix, without the function name). loginUrl is your project's Embedded Authentication hosted sign-in page (Console -> Authentication -> Login URL). Neither value can be predicted before you deploy — this file intentionally ships with placeholders, not guesses.",
+  "apiBase": "https://REPLACE-WITH-YOUR-PROJECT.zohocatalyst.com/server",
+  "loginUrl": "https://REPLACE-WITH-YOUR-PROJECT.zohocatalyst.com/__catalyst/auth/login"
+}

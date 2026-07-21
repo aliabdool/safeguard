@@ -113,10 +113,21 @@ and `apps/catalyst/data-store-schema/README.md`.
     triggers are real, pure, tested rule functions; an on-demand scan endpoint is live for the
     five due-date/expiry-driven triggers. Outbound delivery and live Cron scheduling are
     post-deployment configuration in your own Zoho org, not fabricated here.
-14. Frontend (21 screens, role-aware per the access/dashboard model doc).
-15. Testing (20 test cases from the brief) + deployment handoff.
+14. Frontend — done. 21 screens (login, all 8 role-specific dashboards, incident/CAPA registers
+    and detail pages, documents, controls, KPI centre, evidence map, data quality, reports, three
+    admin screens), React + TypeScript + Vite, built to a static bundle for Catalyst Web Client
+    Hosting. Role-aware navigation reads `GET /me` (new `api-auth` function) and shows only the
+    dashboards/sections a user's roles grant. Medical sections gate on the explicit
+    `medicalPermissions` array, never on role. A "not connected" demo/offline mode renders the
+    full UI shell with empty states — never fabricated figures — when no backend is configured
+    yet, verified in a real browser (screenshots taken via Playwright against the Vite dev server).
+15. Testing + deployment handoff — done. See
+    `docs/2026-07-zoho-catalyst-final-package-instructions.md` for the full 20-case checklist
+    (12 automated in the test suite, verifiable live for full confidence; 8 need a live deployment
+    with seeded data) and the final two-package Direct Upload deliverable.
 
-Backend total after Phase 13: 212 tests passing, `tsc --noEmit` clean, 10 deployable Functions.
+Final totals: 202 backend tests passing, `tsc --noEmit` clean on both `apps/catalyst/` and
+`apps/catalyst/client/`, 11 deployable Functions, a working web client verified in-browser.
 
 Each phase ships as its own reviewable increment, verified (typecheck + tests, same discipline as
 the Supabase build) before moving to the next — not as one unreviewable drop.

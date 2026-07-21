@@ -1,7 +1,7 @@
 import express from "express";
 
 import type { CatalystApp } from "../shared/middleware/auth-context";
-import { withAuthContext, type SafeGuardRequest } from "../shared/middleware/require-permission";
+import { propertyScopeClause, withAuthContext, type SafeGuardRequest } from "../shared/middleware/require-permission";
 import { AuthError } from "../shared/pure/permissions";
 import {
   decideDocumentApproval,
@@ -149,6 +149,40 @@ function handleError(err: unknown, res: express.Response) {
   }
   res.status(400).json({ error: err instanceof Error ? err.message : "Unknown error." });
 }
+
+/** GET /documents — the Document & Evidence Library list: each document with its latest version's
+ * status/expiry, property-scoped (group-wide documents with a null property_id are visible to
+ * everyone, same convention as MaterialTopics). */
+app.get("/documents", async (req, res) => {
+  const safeReq = req as unknown as SafeGuardRequest;
+  try {
+    const zcql = safeReq.catalystApp.zcql();
+    const scope = propertyScopeClause(safeReq.authContext, "Documents.property_id");
+    const rows = (await zcql.executeZCQLQuery(
+      `select Documents.ROWID, Documents.title, Documents.category, Documents.property_id,
+              DocumentVersions.ROWID, DocumentVersions.status, DocumentVersions.expiry_date, DocumentVersions.review_date
+       from Documents left join DocumentVersions on Documents.ROWID = DocumentVersions.document_id
+       where (${scope} or Documents.property_id is null)`,
+    )) as Array<{
+      Documents: { ROWID: string; title: string; category: string; property_id: string };
+      DocumentVersions: { ROWID: string; status: string; expiry_date: string; review_date: string };
+    }>;
+    res.json(
+      rows.map((r) => ({
+        documentId: r.Documents.ROWID,
+        title: r.Documents.title,
+        category: r.Documents.category,
+        propertyId: r.Documents.property_id || null,
+        latestVersionId: r.DocumentVersions?.ROWID ?? null,
+        status: r.DocumentVersions?.status ?? null,
+        expiryDate: r.DocumentVersions?.expiry_date || null,
+        reviewDate: r.DocumentVersions?.review_date || null,
+      })),
+    );
+  } catch (err) {
+    handleError(err, res);
+  }
+});
 
 app.post("/documents", async (req, res) => {
   const safeReq = req as unknown as SafeGuardRequest;

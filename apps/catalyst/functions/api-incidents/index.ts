@@ -1,7 +1,7 @@
 import express from "express";
 
 import type { CatalystApp } from "../shared/middleware/auth-context";
-import { assertPropertyAccess, withAuthContext, type SafeGuardRequest } from "../shared/middleware/require-permission";
+import { assertPropertyAccess, propertyScopeClause, withAuthContext, type SafeGuardRequest } from "../shared/middleware/require-permission";
 import { AuthError } from "../shared/pure/permissions";
 import {
   addMedicalNote,
@@ -184,6 +184,20 @@ function handleError(err: unknown, res: express.Response) {
   res.status(400).json({ error: err instanceof Error ? err.message : "Unknown error." });
 }
 
+/** GET /incidents — the Incident Register list, property-scoped. Medical notes are never
+ * included here (see the separate /medical route group below). */
+app.get("/incidents", async (req, res) => {
+  const safeReq = req as unknown as SafeGuardRequest;
+  try {
+    const rows = (await safeReq.catalystApp.datastore().table("Incidents").getRows({
+      criteria: propertyScopeClause(safeReq.authContext, "Incidents.property_id"),
+    })) as IncidentRow[];
+    res.json(rows.map(fromIncidentColumns));
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
 app.post("/incidents", async (req, res) => {
   const safeReq = req as unknown as SafeGuardRequest;
   try {
@@ -194,6 +208,23 @@ app.post("/incidents", async (req, res) => {
       req.body,
     );
     res.status(201).json(incident);
+  } catch (err) {
+    handleError(err, res);
+  }
+});
+
+/** GET /incidents/:incidentId — single-incident detail (never includes medical notes; those are
+ * the separate, permission-gated /medical route group below). */
+app.get("/incidents/:incidentId", async (req, res) => {
+  const safeReq = req as unknown as SafeGuardRequest;
+  try {
+    const incident = await makeRepo(safeReq.catalystApp).getIncident(req.params.incidentId);
+    if (!incident) {
+      res.status(404).json({ error: "Incident not found." });
+      return;
+    }
+    assertPropertyAccess(safeReq.authContext, incident.propertyId);
+    res.json(incident);
   } catch (err) {
     handleError(err, res);
   }

@@ -1,7 +1,7 @@
 import express from "express";
 
 import type { CatalystApp } from "../shared/middleware/auth-context";
-import { withAuthContext, type SafeGuardRequest } from "../shared/middleware/require-permission";
+import { propertyScopeClause, withAuthContext, type SafeGuardRequest } from "../shared/middleware/require-permission";
 import { AuthError } from "../shared/pure/permissions";
 import {
   closeCapa,
@@ -114,6 +114,19 @@ function handleError(err: unknown, res: express.Response) {
   }
   res.status(400).json({ error: err instanceof Error ? err.message : "Unknown error." });
 }
+
+/** GET /capa — the CAPA Register list, property-scoped. */
+app.get("/capa", async (req, res) => {
+  const safeReq = req as unknown as SafeGuardRequest;
+  try {
+    const rows = (await safeReq.catalystApp.datastore().table("CAPA").getRows({
+      criteria: propertyScopeClause(safeReq.authContext, "CAPA.property_id"),
+    })) as CapaRow[];
+    res.json(rows.map(fromCapaColumns));
+  } catch (err) {
+    handleError(err, res);
+  }
+});
 
 app.post("/capa", async (req, res) => {
   const safeReq = req as unknown as SafeGuardRequest;

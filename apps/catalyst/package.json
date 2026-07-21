@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "build:functions": "node scripts/build-functions.mjs",
-    "package:direct-upload": "node scripts/prepare-direct-upload-zip.mjs"
+    "package:direct-upload": "node scripts/prepare-direct-upload-zip.mjs",
+    "package:client": "node scripts/prepare-client-zip.mjs",
+    "package:all": "npm run package:direct-upload && npm run package:client"
   },
   "dependencies": {
     "express": "^4.19.2",

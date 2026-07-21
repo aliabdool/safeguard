@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 /**
- * Assembles a clean Zoho Catalyst deployment package and zips it — no node_modules, no test
- * files, no .git, no local cache, no secrets. Run `npm run build:functions` first (this script
- * does it for you if dist/functions/ doesn't exist yet).
- *
- * What ends up in the zip is deliberately scoped to what's actually deployable right now (the
- * Phase 5/6 backend Functions + the Data Store schema they depend on) — there is no web client
- * yet (that's Phase 14), so this is a Functions-layer preview package, not a clickable app. See
- * the generated README inside the zip for exactly what that means for testing.
+ * Assembles the Package A (Functions) Direct Upload ZIP — no node_modules, no test files, no
+ * .git, no local cache, no secrets. Run `npm run build:functions` first (this script does it for
+ * you if dist/functions/ doesn't exist yet). Package B (the web client) is built separately by
+ * scripts/prepare-client-zip.mjs — see docs/2026-07-zoho-catalyst-final-package-instructions.md
+ * for why Functions and Web Client Hosting are two different Catalyst products with two different
+ * upload flows, and the exact order to deploy both.
  */
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, cpSync, writeFileSync, createWriteStream } from "node:fs";
@@ -18,99 +16,87 @@ import archiver from "archiver";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const distFunctions = join(root, "dist", "functions");
 const stagingDir = join(root, "dist", "direct-upload-staging");
-const zipPath = join(root, "dist", "safeguard-catalyst-phase6-direct-upload.zip");
+const zipPath = join(root, "dist", "safeguard-catalyst-functions-direct-upload.zip");
 
-const README_TEXT = `# SafeGuard on Zoho Catalyst — Phase 6 Direct Upload preview package
+const FUNCTION_NAMES = [
+  "api-auth",
+  "api-dashboard-summary",
+  "api-incidents",
+  "api-capa",
+  "api-documents",
+  "api-controls",
+  "api-kpi",
+  "api-assurance-map",
+  "api-data-quality",
+  "api-reports",
+  "api-notifications",
+];
 
-**This is a preview/testing package for management validation. It is NOT a production deployment
-artifact and NOT a complete application.** No web client exists yet (that's Phase 14) — this
-package lets you deploy and test the Phase 5/6 backend Functions directly (incident creation,
-investigation start, statutory OSH-reportability determination, the fully permission-gated
-medical-notes module, and CAPA creation/progress/verification/closure), via the Catalyst
-Console's function testing tools or a REST client (Postman/curl), not by clicking through screens.
+const README_TEXT = `# SafeGuard on Zoho Catalyst — Package A (Functions), management test build
+
+**This is a management test build. It is NOT a production-ready build and NOT a production
+candidate.** Every module below is real and tested (202 tests passing, see the repo), but your own
+Zoho project needs the Data Store tables created and content (control library, KPI catalogue)
+authored before the system reflects your actual operations — see the full instructions in
+\`docs/2026-07-zoho-catalyst-final-package-instructions.md\` in the repository.
+
+This is **Package A of two** — the backend Functions. **Package B is the web client**
+(\`safeguard-catalyst-client-direct-upload.zip\`, built via \`npm run package:client\`), deployed
+separately through Catalyst's Web Client Hosting, a different Console section from Functions —
+there is no single upload that installs both. Deploy Data Store → Authentication → Package A →
+Package B, in that order; see the final-package-instructions doc for exact steps and required
+post-upload configuration (the client's \`config.json\`).
 
 ## What's in this zip
 
-- \`functions/api-dashboard-summary/\` — the batch dashboard summary endpoint (bundled \`index.js\`
-  + \`catalyst-config.json\`). Needs the identity/access, master-data, and KPI-snapshot tables to
-  return real data; will run but return mostly empty sections without them.
-- \`functions/api-incidents/\` — incident creation, investigation start, OSH-reportability
-  determination, and the medical-notes module (view/add/export, each requiring its own explicit
-  permission and each audit-logged whether granted or denied).
-- \`functions/api-capa/\` — CAPA creation (owner and verifier must be different people, enforced
-  before any write), owner progress updates, verification (only the designated verifier, never
-  the owner), and closure.
-- \`data-store-schema/\` — the table definitions these Functions depend on (JSON, in the shape
-  you'll enter into Data Store manually or via schema push — see "How to upload" below).
-- \`catalyst.json.TEMPLATE\` — **not a real project manifest.** Documents the expected shape;
-  replace it with the real \`catalyst.json\` that \`catalyst init\` generates against your actual
-  Zoho Catalyst project.
+Eleven bundled Functions (\`index.js\` + \`catalyst-config.json\` each, no source \`.ts\`, no
+\`node_modules\`):
+
+${FUNCTION_NAMES.map((n) => `- \`functions/${n}/\``).join("\n")}
+
+Covering: authentication/\`GET /me\` for the client, the batch dashboard endpoint, incidents +
+medical-note isolation, CAPA (owner ≠ verifier, enforced and re-checked at verification),
+documents/evidence (expired evidence never silently valid), controls/critical-gap override, the
+22-KPI engine, the assurance evidence map, the nine data-quality exception checks, board narrative
++ assurance pack + six raw exports (all audit-logged), and the fourteen notification triggers
+(scaffolded — see README.md in the repo for what "scaffolded" means here).
+
+Also included: \`data-store-schema/\` (all 12 schema files, in the shape you'll enter into Data
+Store manually or via schema push) and \`catalyst.json.TEMPLATE\` (not a real manifest — run
+\`catalyst init\` against your actual project to generate the real one).
 
 ## What's deliberately NOT in this zip
 
 Source \`.ts\` files, \`node_modules\`, test files, \`.git\`, any \`.env\`/secrets, build caches. Every
-function's \`index.js\` is a single bundled file (esbuild, CommonJS, Node 18 target) — it has zero
+function's \`index.js\` is a single bundled file (esbuild, CommonJS, Node 18 target) — zero
 dependency on an \`npm install\` step happening after upload.
 
 ## How to upload in Zoho Catalyst (Direct Upload)
 
-1. Log in to the [Catalyst Console](https://console.catalyst.zoho.com) and open your project (or
-   create one first if this is the very first deployment).
-2. **Data Store first** — go to **Data Store**, create each table listed in \`data-store-schema/\`
-   (start with \`01-identity-and-access.json\` and \`02-master-data.json\`, then
-   \`03-incidents.json\`) with matching column names/types/scopes. This has to happen before the
-   Functions will do anything meaningful.
-3. **Authentication** — enable Embedded Authentication with custom role assignment (Catalyst
-   Console → Authentication). Create at least two test users: one with no medical permission
-   grant (to prove denial), one with an explicit \`view_medical_notes\` \`UserPermissions\` row (to
-   prove access). For CAPA testing, create at least two more: a CAPA owner and a separate CAPA
-   verifier — the system will refuse to create a CAPA where they're the same person.
-4. **Functions** — go to **Functions** → **Create Function** (or the upload option for an
-   existing function) → choose **Advanced I/O**, Node.js stack, and upload the corresponding
-   \`functions/<name>/\` folder from this zip (or its \`index.js\` + \`catalyst-config.json\` per
-   Catalyst's upload flow for that function type).
-5. Repeat for \`api-dashboard-summary\`, \`api-incidents\`, and \`api-capa\`.
+1. Log in to the [Catalyst Console](https://console.catalyst.zoho.com) and open your project.
+2. **Data Store first** — create every table in \`data-store-schema/\`, files \`01\` through \`12\` in
+   order, matching column names/types/scopes exactly. Nothing below will work without this.
+3. **Authentication** — enable Embedded Authentication with custom role assignment. Create the
+   test users named in the final-package-instructions doc's checklist (medical-permission grant
+   vs. none, CAPA owner vs. verifier, etc.).
+4. **Functions** — for each of the eleven functions above: Console → Functions → Create Function
+   → Advanced I/O, Node.js stack → upload that function's folder (or its \`index.js\` +
+   \`catalyst-config.json\`).
+5. Deploy Package B (the web client) next — see its own README, or the final-package-instructions
+   doc for the combined sequence.
 
 ## Required Catalyst services
 
-- **Data Store** (tables above)
-- **Authentication** (Embedded, with custom role/permission assignment)
-- **Functions** (Advanced I/O, Node.js 18)
+Data Store, Authentication (Embedded, custom role/permission assignment), Functions (Advanced I/O,
+Node.js 18). Web Client Hosting for Package B. Notifications' outbound delivery needs a mail/SMS
+provider once you choose one — not required for this test build.
 
-No external environment variables are required for this phase — everything reads from Data Store
-and Catalyst's own Authentication context. (Later phases — notifications, in particular — will
-need mail/SMS provider configuration; not needed yet.)
+## Repository-based deployment (kept ready for production)
 
-## Testing what's here
-
-Since there's no client yet, "testing" at this stage means confirming the Functions behave
-correctly when called directly:
-
-- \`POST /incidents\` — create an incident (test user needs a \`UserPropertyAccess\` row for the
-  target property first).
-- \`POST /incidents/:id/investigation\` — start an investigation.
-- \`GET /incidents/:id/medical\` — **as the user with no medical permission, expect 403.** As the
-  user with an explicit \`view_medical_notes\` grant, expect the note list (empty until one is
-  added).
-- \`POST /incidents/:id/medical\` — requires \`edit_medical_notes\`, not \`view_medical_notes\` —
-  confirms the three medical permissions are genuinely independent.
-- Check the \`AuditTrail\` table after each medical-notes call — every attempt, granted or denied,
-  should have written a row.
-- \`POST /capa\` with \`ownerId\` equal to \`verifierId\` — **expect a rejection.** With two
-  different users, expect \`201\` and \`status: "open"\`.
-- \`POST /capa/:id/progress\` (as the owner) to move it through \`in_progress\` →
-  \`pending_verification\`, then \`POST /capa/:id/verify\` (as the owner) — **expect a 403**, then
-  the same call as the designated verifier — expect success and \`status: "verified"\`.
-- \`POST /capa/:id/close\` (after verification) — expect \`status: "closed"\`.
-
-## Repository-based deployment (kept ready for later)
-
-This same \`apps/catalyst/\` directory lives in the \`safeguard\` GitHub repository. Once
-\`catalyst init\` links a real Catalyst project here, Catalyst's own GitHub Integration
-(Console → DevOps → GitHub Integration) can be pointed at this repo/path so future pushes deploy
-automatically — that's the intended path for controlled production releases once management signs
-off on moving past Direct Upload testing. Nothing about this package blocks that; it's the same
-source, just packaged differently for the two different deployment mechanisms.
+This same \`apps/catalyst/\` directory (functions and client both) lives in the \`safeguard\` GitHub
+repository. Once \`catalyst init\` links a real Catalyst project, GitHub Integration (Console →
+DevOps) can point at this repo/path so future pushes deploy automatically — the intended path for
+controlled production releases once management signs off on moving past Direct Upload testing.
 `;
 
 async function main() {
@@ -122,17 +108,9 @@ async function main() {
   rmSync(stagingDir, { recursive: true, force: true });
   mkdirSync(stagingDir, { recursive: true });
 
-  // 1. Functions — bundled JS + catalyst-config.json only, no source .ts, no node_modules.
   cpSync(distFunctions, join(stagingDir, "functions"), { recursive: true });
+  cpSync(join(root, "data-store-schema"), join(stagingDir, "data-store-schema"), { recursive: true });
 
-  // 2. Data Store schema reference — not something Catalyst "deploys," but the tester needs it
-  // to create the required tables before the functions will do anything useful.
-  cpSync(join(root, "data-store-schema"), join(stagingDir, "data-store-schema"), {
-    recursive: true,
-  });
-
-  // 3. catalyst.json — TEMPLATE ONLY. Catalyst assigns real project/environment IDs when you run
-  // `catalyst init` against your actual Zoho org; nothing here can predict those.
   writeFileSync(
     join(stagingDir, "catalyst.json.TEMPLATE"),
     JSON.stringify(
@@ -140,10 +118,9 @@ async function main() {
         _comment:
           "TEMPLATE — not a real Catalyst project manifest. Run `catalyst init` in this " +
           "directory against your actual Zoho Catalyst project first; that command generates " +
-          "the real catalyst.json with your project's actual IDs. This file just documents the " +
-          "expected shape so you know what to check after init.",
+          "the real catalyst.json with your project's actual IDs.",
         source: { functions: "./functions", client: "./client" },
-        targets: { functions: ["api-dashboard-summary", "api-incidents", "api-capa"] },
+        targets: { functions: FUNCTION_NAMES },
         ignore: { functions: ["*.test.ts", "*.ts", "node_modules"] },
       },
       null,
@@ -151,10 +128,8 @@ async function main() {
     ),
   );
 
-  // 4. The ZIP's own README.
   writeFileSync(join(stagingDir, "README.md"), README_TEXT);
 
-  // Zip the staging directory's CONTENTS (not the folder itself) so the zip root is clean.
   mkdirSync(dirname(zipPath), { recursive: true });
   const output = createWriteStream(zipPath);
   const archive = archiver("zip", { zlib: { level: 9 } });
