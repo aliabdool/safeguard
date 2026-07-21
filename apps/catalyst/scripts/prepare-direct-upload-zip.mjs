@@ -5,9 +5,9 @@
  * does it for you if dist/functions/ doesn't exist yet).
  *
  * What ends up in the zip is deliberately scoped to what's actually deployable right now (the
- * Phase 5 backend Functions + the Data Store schema they depend on) — there is no web client yet
- * (that's Phase 14), so this is a Functions-layer preview package, not a clickable app. See the
- * generated README inside the zip for exactly what that means for testing.
+ * Phase 5/6 backend Functions + the Data Store schema they depend on) — there is no web client
+ * yet (that's Phase 14), so this is a Functions-layer preview package, not a clickable app. See
+ * the generated README inside the zip for exactly what that means for testing.
  */
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, cpSync, writeFileSync, createWriteStream } from "node:fs";
@@ -18,16 +18,16 @@ import archiver from "archiver";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const distFunctions = join(root, "dist", "functions");
 const stagingDir = join(root, "dist", "direct-upload-staging");
-const zipPath = join(root, "dist", "safeguard-catalyst-phase5-direct-upload.zip");
+const zipPath = join(root, "dist", "safeguard-catalyst-phase6-direct-upload.zip");
 
-const README_TEXT = `# SafeGuard on Zoho Catalyst — Phase 5 Direct Upload preview package
+const README_TEXT = `# SafeGuard on Zoho Catalyst — Phase 6 Direct Upload preview package
 
 **This is a preview/testing package for management validation. It is NOT a production deployment
 artifact and NOT a complete application.** No web client exists yet (that's Phase 14) — this
-package lets you deploy and test the Phase 5 backend Functions directly (incident creation,
-investigation start, statutory OSH-reportability determination, and the fully permission-gated
-medical-notes module), via the Catalyst Console's function testing tools or a REST client
-(Postman/curl), not by clicking through screens.
+package lets you deploy and test the Phase 5/6 backend Functions directly (incident creation,
+investigation start, statutory OSH-reportability determination, the fully permission-gated
+medical-notes module, and CAPA creation/progress/verification/closure), via the Catalyst
+Console's function testing tools or a REST client (Postman/curl), not by clicking through screens.
 
 ## What's in this zip
 
@@ -37,6 +37,9 @@ medical-notes module), via the Catalyst Console's function testing tools or a RE
 - \`functions/api-incidents/\` — incident creation, investigation start, OSH-reportability
   determination, and the medical-notes module (view/add/export, each requiring its own explicit
   permission and each audit-logged whether granted or denied).
+- \`functions/api-capa/\` — CAPA creation (owner and verifier must be different people, enforced
+  before any write), owner progress updates, verification (only the designated verifier, never
+  the owner), and closure.
 - \`data-store-schema/\` — the table definitions these Functions depend on (JSON, in the shape
   you'll enter into Data Store manually or via schema push — see "How to upload" below).
 - \`catalyst.json.TEMPLATE\` — **not a real project manifest.** Documents the expected shape;
@@ -60,12 +63,13 @@ dependency on an \`npm install\` step happening after upload.
 3. **Authentication** — enable Embedded Authentication with custom role assignment (Catalyst
    Console → Authentication). Create at least two test users: one with no medical permission
    grant (to prove denial), one with an explicit \`view_medical_notes\` \`UserPermissions\` row (to
-   prove access).
+   prove access). For CAPA testing, create at least two more: a CAPA owner and a separate CAPA
+   verifier — the system will refuse to create a CAPA where they're the same person.
 4. **Functions** — go to **Functions** → **Create Function** (or the upload option for an
    existing function) → choose **Advanced I/O**, Node.js stack, and upload the corresponding
    \`functions/<name>/\` folder from this zip (or its \`index.js\` + \`catalyst-config.json\` per
    Catalyst's upload flow for that function type).
-5. Repeat for both \`api-dashboard-summary\` and \`api-incidents\`.
+5. Repeat for \`api-dashboard-summary\`, \`api-incidents\`, and \`api-capa\`.
 
 ## Required Catalyst services
 
@@ -92,6 +96,12 @@ correctly when called directly:
   confirms the three medical permissions are genuinely independent.
 - Check the \`AuditTrail\` table after each medical-notes call — every attempt, granted or denied,
   should have written a row.
+- \`POST /capa\` with \`ownerId\` equal to \`verifierId\` — **expect a rejection.** With two
+  different users, expect \`201\` and \`status: "open"\`.
+- \`POST /capa/:id/progress\` (as the owner) to move it through \`in_progress\` →
+  \`pending_verification\`, then \`POST /capa/:id/verify\` (as the owner) — **expect a 403**, then
+  the same call as the designated verifier — expect success and \`status: "verified"\`.
+- \`POST /capa/:id/close\` (after verification) — expect \`status: "closed"\`.
 
 ## Repository-based deployment (kept ready for later)
 
@@ -133,7 +143,7 @@ async function main() {
           "the real catalyst.json with your project's actual IDs. This file just documents the " +
           "expected shape so you know what to check after init.",
         source: { functions: "./functions", client: "./client" },
-        targets: { functions: ["api-dashboard-summary", "api-incidents"] },
+        targets: { functions: ["api-dashboard-summary", "api-incidents", "api-capa"] },
         ignore: { functions: ["*.test.ts", "*.ts", "node_modules"] },
       },
       null,

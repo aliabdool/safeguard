@@ -1,0 +1,49 @@
+{
+  "_comment": "CAPA (corrective/preventive action) + verification tables. Phase 6. owner_id and verifier_id must always differ — enforced in functions/shared/pure/capa-workflow.ts (isValidOwnerVerifierPair) before any write, not just assumed from the schema. CAPAVerification is its own table, not columns on CAPA, mirroring the IncidentInvestigation split from Phase 5 — this is what lets the Group/Hotel/Department Manager dashboards query 'CAPA awaiting verification' independently of 'CAPA awaiting owner update' (docs/2026-07-zoho-catalyst-access-and-dashboard-model.md §6).",
+  "tables": [
+    {
+      "table_name": "CAPA",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "capa_number", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true, "comment": "The row-scoping column — every query MUST run through propertyScopeClause()." },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "nullable": true, "comment": "Nullable — not every CAPA is department-scoped. Required for the Department Manager Dashboard's 'assigned CAPA' row." },
+        { "column_name": "title", "type": "text", "notNull": true },
+        { "column_name": "description", "type": "text", "nullable": true },
+        { "column_name": "source_type", "type": "text", "notNull": true, "comment": "incident | audit_finding | control_gap — what this CAPA closes out. Used for drill-down and framework linkage." },
+        { "column_name": "source_id", "type": "text", "nullable": true, "comment": "ROWID of the originating Incidents / AuditFindings / CriticalGaps row." },
+        { "column_name": "owner_id", "type": "lookup", "references": "Users", "notNull": true, "comment": "Must differ from verifier_id — see isValidOwnerVerifierPair()." },
+        { "column_name": "verifier_id", "type": "lookup", "references": "Users", "notNull": true, "comment": "Must differ from owner_id — see isValidOwnerVerifierPair()." },
+        { "column_name": "due_date", "type": "date", "notNull": true },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "open", "comment": "open | in_progress | pending_verification | verified | closed — validated against isValidCapaStatusTransition() in capa-workflow.ts." },
+        { "column_name": "created_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "updated_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "CAPAProgressNotes",
+      "scope": "Org",
+      "comment": "Owner-entered progress updates and evidence references, one row per update — keeps the audit trail of what the owner actually did without overwriting a single free-text column each time.",
+      "columns": [
+        { "column_name": "capa_id", "type": "lookup", "references": "CAPA", "notNull": true },
+        { "column_name": "author_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "note", "type": "text", "notNull": true },
+        { "column_name": "evidence_file_id", "type": "text", "nullable": true, "comment": "Catalyst File Store reference; the evidence library itself ships in Phase 7." },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "CAPAVerification",
+      "scope": "Org",
+      "comment": "The verification DECISION as its own record, separate from CAPA.status — captures who verified, when, and the outcome, so 'CAPA awaiting verification' and 'CAPA rejected back to owner' are both queryable without conflating them with 'CAPA awaiting owner update'. Every insert here is preceded by a re-check that verifier_id != CAPA.owner_id (defence in depth beyond the check at CAPA creation).",
+      "columns": [
+        { "column_name": "capa_id", "type": "lookup", "references": "CAPA", "notNull": true },
+        { "column_name": "verifier_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "outcome", "type": "text", "notNull": true, "comment": "verified | rejected" },
+        { "column_name": "notes", "type": "text", "nullable": true },
+        { "column_name": "verified_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    }
+  ]
+}

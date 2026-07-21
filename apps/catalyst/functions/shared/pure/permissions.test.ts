@@ -123,4 +123,23 @@ describe("hasMedicalPermission", () => {
     const ctx = makeCtx({ roleCodes: [], medicalPermissions: new Set(["view"]) });
     expect(hasMedicalPermission(ctx, "view")).toBe(true);
   });
+  it("a Hotel General Manager with no explicit medical grant has no medical access", () => {
+    const ctx = makeCtx({ roleCodes: ["HOTEL_GENERAL_MANAGER"], medicalPermissions: new Set() });
+    expect(hasMedicalPermission(ctx, "view")).toBe(false);
+  });
+});
+
+describe("HOTEL_GENERAL_MANAGER and STANDARD_VIEWER (2026-07 access/dashboard brief)", () => {
+  it("a Hotel General Manager is not an admin and needs an explicit property grant, same as any other property-scoped role", () => {
+    const ctx = makeCtx({ roleCodes: ["HOTEL_GENERAL_MANAGER"], propertyIds: [PROPERTY_A] });
+    expect(isAdmin(ctx)).toBe(false);
+    expect(hasPropertyAccess(ctx, PROPERTY_A)).toBe(true);
+    expect(hasPropertyAccess(ctx, PROPERTY_B)).toBe(false);
+  });
+  it("a Standard Viewer is not an admin and needs an explicit property grant", () => {
+    const ctx = makeCtx({ roleCodes: ["STANDARD_VIEWER"], propertyIds: [PROPERTY_A] });
+    expect(isAdmin(ctx)).toBe(false);
+    expect(hasPropertyAccess(ctx, PROPERTY_A)).toBe(true);
+    expect(hasPropertyAccess(ctx, PROPERTY_B)).toBe(false);
+  });
 });

@@ -3,7 +3,10 @@
 Phases 1–5 of the migration from Supabase/Vercel per management's decision to pause that stack and
 replicate/strengthen the system on Zoho Catalyst. See
 `docs/2026-07-zoho-catalyst-migration-plan.md` for the full architecture assessment, data model,
-permission model, and phased implementation plan this scaffold implements.
+permission model, and phased implementation plan this scaffold implements, and
+`docs/2026-07-zoho-catalyst-access-and-dashboard-model.md` for the full 9-role access-layer model
+and 8-dashboard batch-endpoint model — confirmed and documented before Phase 14 (the web client)
+per management's explicit instruction.
 
 ## What's real in this directory right now
 
@@ -24,17 +27,24 @@ permission model, and phased implementation plan this scaffold implements.
 - `functions/api-dashboard-summary/` — the batch dashboard endpoint (Improvement 1).
 - `functions/api-incidents/` — incident creation, investigation start, OSH-reportability
   determination, and the medical-notes module (view/add/export).
-- `data-store-schema/` — JSON schema definitions: identity/access, master data, and now incidents/
-  investigation/medical-notes (`03-incidents.json`). Remaining table groups (CAPA, documents,
-  controls, KPI, materiality/climate, reports/quality/notifications) ship in the next phases.
+- `functions/api-capa/` — CAPA creation, owner progress updates, verification (owner and verifier
+  are always different people, enforced at creation and re-checked defensively at verification),
+  and closure.
+- `data-store-schema/` — JSON schema definitions: identity/access, master data, incidents/
+  investigation/medical-notes (`03-incidents.json`), and now CAPA/verification (`04-capa.json`).
+  Remaining table groups (documents, controls, KPI, materiality/climate,
+  reports/quality/notifications) ship in the next phases.
+- `docs/2026-07-zoho-catalyst-access-and-dashboard-model.md` — the confirmed 9-role access-layer
+  model and 8-dashboard batch-endpoint model, written before Phase 14 per management's instruction.
 
-**99 tests pass, `tsc --noEmit` is clean.** Run `npm install && npm test` to verify yourself.
+**128 tests pass, `tsc --noEmit` is clean.** Run `npm install && npm test` to verify yourself.
 
 ## What isn't done yet (tracked, not forgotten)
 
-CAPA, documents/evidence, controls/critical-gap persistence, the 22-KPI calculation functions
+Documents/evidence, controls/critical-gap persistence, the 22-KPI calculation functions
 themselves, the Assurance Evidence Map, Data Quality Exceptions, Board Mode, notifications/cron,
-and the 17-screen client. Each is its own phase in the tracked plan.
+and the 8 role-specific dashboards of the 17-screen client. Each is its own phase in the tracked
+plan.
 
 ## Preparing a Direct Upload preview package
 
@@ -43,7 +53,7 @@ cd apps/catalyst
 npm install
 npm run package:direct-upload
 ```
-Produces `dist/safeguard-catalyst-phase5-direct-upload.zip` — bundled Functions only (esbuild,
+Produces `dist/safeguard-catalyst-phase6-direct-upload.zip` — bundled Functions only (esbuild,
 CommonJS, no `node_modules`, no `.ts` source, no test files, no secrets), plus the Data Store
 schema and a README explaining upload steps, required Catalyst services, and — importantly —
 that there is **no web client yet**, so this preview tests the Functions layer directly (Catalyst

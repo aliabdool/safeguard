@@ -7,9 +7,18 @@
  * and independently revocable, per the brief's own §Improvement 4 and §14.
  */
 
+/**
+ * Role codes and their mapping to management's 9 named access layers (2026-07 access/dashboard
+ * brief) are documented in full in
+ * docs/2026-07-zoho-catalyst-access-and-dashboard-model.md — read that before adding, removing,
+ * or reinterpreting a role here. Short version: HOTEL_GENERAL_MANAGER and STANDARD_VIEWER were
+ * added in Phase 5.5 to close two genuine gaps against that 9-role list; DUTY_MANAGER and
+ * INCIDENT_REPORTER predate the brief and are kept as additional operational roles, not replaced.
+ */
 export type RoleCode =
   | "SUPER_ADMIN"
   | "GROUP_HS_ADMIN"
+  | "HOTEL_GENERAL_MANAGER"
   | "PROPERTY_HS_OFFICER"
   | "INTERNAL_AUDITOR"
   | "DEPARTMENT_MANAGER"
@@ -17,7 +26,8 @@ export type RoleCode =
   | "NURSE_MEDICAL"
   | "INCIDENT_REPORTER"
   | "EXECUTIVE_READONLY"
-  | "EXTERNAL_AUDITOR_READONLY";
+  | "EXTERNAL_AUDITOR_READONLY"
+  | "STANDARD_VIEWER";
 
 export type MedicalPermissionAction = "view" | "edit" | "export";
 

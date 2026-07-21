@@ -69,7 +69,21 @@ and `apps/catalyst/data-store-schema/README.md`.
    every access audit-logged whether granted or denied, hospital referral and statutory
    OSH-reportability kept as fully separate records. Verified with 20 new tests (99 total)
    including the exact scenarios management asked for by name.
-6. CAPA module (owner ≠ verifier).
+5.5. Access-layer + dashboard-layer architecture confirmed and documented — see
+   `docs/2026-07-zoho-catalyst-access-and-dashboard-model.md`. `RoleCode` extended with
+   `HOTEL_GENERAL_MANAGER` and `STANDARD_VIEWER` to close the two real gaps against management's
+   9-role list (102 tests now passing). All 8 named dashboards mapped to batch endpoints — 5 named
+   by management (`group-summary`, `hotel-summary`, `hso-workbench`, `board-summary`,
+   `auditor-summary`) plus 3 proposed to complete the set (`admin-summary`,
+   `department-summary`, `medical-summary`), each documented with which phase ships it.
+6. CAPA module — done. Owner and verifier must always be different people, enforced in the pure
+   `isValidOwnerVerifierPair()` check before any write at creation, and re-checked defensively at
+   the moment of verification; only the CAPA's designated verifier (never the owner, never a
+   bystander with mere property access) may verify. Verification is its own record
+   (`CAPAVerification`), separate from `CAPA.status`, mirroring the `IncidentInvestigation` split
+   from Phase 5 — this is what lets "CAPA awaiting verification" be queried independently of "CAPA
+   awaiting owner update" on the dashboards documented in
+   `docs/2026-07-zoho-catalyst-access-and-dashboard-model.md` §6. 15 new tests (128 total).
 7. Documents/evidence library + evidence-reuse.
 8. Controls/frameworks + critical-gap override persistence.
 9. KPI engine (22 KPIs) + calculation log.

@@ -30,7 +30,8 @@ deliverable) for the enforcement pattern once it lands.
   RootCauseCategories, Frameworks, Controls, KPIDefinitions
 - `03-incidents.json` — Incidents, IncidentPersons, IncidentWitnesses, IncidentInvestigation,
   IncidentFiveWhys, IncidentRootCauses, IncidentOSHReportability, MedicalNotes
-- `04-capa.json` — CAPA, CAPAEvidence, CAPAVerification, CAPAStatusHistory
+- `04-capa.json` — CAPA, CAPAProgressNotes, CAPAVerification (owner_id/verifier_id must always
+  differ — enforced in `functions/shared/pure/capa-workflow.ts`)
 - `05-documents.json` — Documents, DocumentVersions, DocumentApprovals, DocumentEvidenceLinks,
   DocumentExpiryChecks
 - `06-controls-frameworks.json` — ControlMaturityScores, ControlEvidenceLinks, CriticalGaps,
