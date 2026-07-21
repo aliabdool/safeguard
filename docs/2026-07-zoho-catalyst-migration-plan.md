@@ -84,15 +84,39 @@ and `apps/catalyst/data-store-schema/README.md`.
    from Phase 5 — this is what lets "CAPA awaiting verification" be queried independently of "CAPA
    awaiting owner update" on the dashboards documented in
    `docs/2026-07-zoho-catalyst-access-and-dashboard-model.md` §6. 15 new tests (128 total).
-7. Documents/evidence library + evidence-reuse.
-8. Controls/frameworks + critical-gap override persistence.
-9. KPI engine (22 KPIs) + calculation log.
-10. Assurance Evidence Map.
-11. Data Quality Exceptions.
-12. Board Mode + reports/exports + audit logging.
-13. Notifications + scheduled jobs (Cron).
-14. Frontend (17 screens).
+7. Documents/evidence library + evidence-reuse — done. Approval workflow (draft → pending_approval
+   → approved/rejected → superseded), expiry/review dates, and the many-to-many
+   `DocumentEvidenceLinks` table that powers "Supports N records across M frameworks". Expired
+   evidence is evaluated live against the current date on every use (`isValidEvidence()`) — never
+   cached as a stale boolean.
+8. Controls/frameworks + critical-gap override persistence — done. `ControlAssessments` +
+   `CriticalGaps` (open/resolve lifecycle, mirroring CAPA/incident) + `FrameworkReadinessSnapshots`,
+   all built on the already-ported `pure/maturity.ts` rollup — an expired fire certificate scoring
+   a life-safety-critical control at ≤1 opens a critical gap and caps the framework readiness
+   rollup at 1 regardless of how well other controls score, proven in tests by name.
+9. KPI engine (22 KPIs) — done. Ports the Supabase build's exact 22-KPI REGISTRY (verified: the
+   original `calculate.ts` registry has exactly 22 entries). Every KPI not in that set returns
+   "not yet calculable", never a fabricated zero; a genuinely-zero count is still shown as 0.
+   Framework-readiness KPIs read the Phase 8 snapshot rather than recomputing live.
+10. Assurance Evidence Map — done. Framework → Requirement → Control → Evidence → KPI/Finding/CAPA,
+    filterable by framework, property, department, evidence status, critical gap, expired
+    evidence, and report relevance — the core differentiator screen, pure-filtered so the query
+    layer stays dumb and the logic stays tested.
+11. Data Quality Exceptions — done. All nine named checks, each a pure rule; scanning
+    opens/resolves exceptions against what's currently detected rather than leaving stale rows.
+12. Board Mode + reports/exports + audit logging — done. Board narrative and the assurance
+    readiness pack (labelled "management self-assessment", never "external assurance") both read
+    live KPI data only; six additional raw exports (KPI/incident/CAPA/audit/evidence-map/
+    framework-readiness), all eight permission-controlled and audit-logged with the exporting user,
+    filters, and timestamp recorded.
+13. Notifications + scheduled jobs — scaffolded per management's instruction. All fourteen named
+    triggers are real, pure, tested rule functions; an on-demand scan endpoint is live for the
+    five due-date/expiry-driven triggers. Outbound delivery and live Cron scheduling are
+    post-deployment configuration in your own Zoho org, not fabricated here.
+14. Frontend (21 screens, role-aware per the access/dashboard model doc).
 15. Testing (20 test cases from the brief) + deployment handoff.
+
+Backend total after Phase 13: 212 tests passing, `tsc --noEmit` clean, 10 deployable Functions.
 
 Each phase ships as its own reviewable increment, verified (typecheck + tests, same discipline as
 the Supabase build) before moving to the next — not as one unreviewable drop.

@@ -32,14 +32,21 @@ deliverable) for the enforcement pattern once it lands.
   IncidentFiveWhys, IncidentRootCauses, IncidentOSHReportability, MedicalNotes
 - `04-capa.json` — CAPA, CAPAProgressNotes, CAPAVerification (owner_id/verifier_id must always
   differ — enforced in `functions/shared/pure/capa-workflow.ts`)
-- `05-documents.json` — Documents, DocumentVersions, DocumentApprovals, DocumentEvidenceLinks,
-  DocumentExpiryChecks
-- `06-controls-frameworks.json` — ControlMaturityScores, ControlEvidenceLinks, CriticalGaps,
-  FrameworkReadinessScores, FrameworkReadinessSnapshots
-- `07-audits.json` — Audits, AuditFindings, AuditFindingCAPALinks, AuditFindingEvidenceLinks
-- `08-kpi.json` — KPISnapshots, KPICalculationLogs, KPIRecordLinks
-- `09-materiality-climate.json` — MaterialTopics, GRIImpactMaterialityScores,
-  IFRSFinancialMaterialityScores, ClimateRisks, ClimateRiskControls, ClimateAdaptationActions
-- `10-reports-quality-notifications.json` — Reports, ReportExports, BoardNarratives,
-  AssuranceReadinessPacks, DataQualityExceptions, Notifications, NotificationPreferences,
-  ScheduledReminderLogs
+- `05-documents.json` — Documents, DocumentVersions, DocumentApprovals, DocumentEvidenceLinks
+  (many-to-many — one approved document can support many controls across many frameworks)
+- `06-controls-frameworks.json` — ControlAssessments, CriticalGaps, FrameworkReadinessSnapshots
+  (Controls/Frameworks/FrameworkRequirements/ControlFrameworkMappings master data already lives in
+  `02-master-data.json`)
+- `07-audits.json` — Audits, AuditFindings, AuditFindingCAPALinks
+- `08-kpi.json` — KPISnapshots (the 22 live-calculated KPIs — see
+  `functions/shared/services/kpi-service.ts`)
+- `09-materiality-climate.json` — MaterialTopics, ClimateRisks (minimal — scoped to what the
+  Phase 11 data-quality checks need; full materiality/climate workflow reuses the pure logic in
+  `functions/shared/pure/materiality-scoring.ts` and `climate-risk.ts`)
+- `10-data-quality.json` — DataQualityExceptions (the nine named rules — see
+  `functions/shared/pure/data-quality-rules.ts`)
+- `11-reports.json` — ReportExports (every export — board narrative, assurance pack, or a raw
+  data dump — writes one row here, permission-controlled and audit-logged)
+- `12-notifications.json` — Notifications (the fourteen named triggers — see
+  `functions/shared/pure/notification-rules.ts`; scaffolded per management's instruction, real
+  and tested rule logic, outbound email/SMS delivery deferred to when a provider is configured)

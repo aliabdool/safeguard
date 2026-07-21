@@ -27,7 +27,7 @@
     {
       "table_name": "Permissions",
       "scope": "Global",
-      "comment": "Explicit, non-role-implied permission codes — view_medical_notes, edit_medical_notes, export_medical_notes, generate_board_narrative, export_assurance_pack, approve_documents_groupwide, view_all_properties, etc. Never inferred from role — see docs/2026-07-zoho-catalyst-access-and-dashboard-model.md for which of the 9 access layers may be GRANTED each of these (grantable does not mean automatic).",
+      "comment": "Explicit, non-role-implied permission codes — view_medical_notes, edit_medical_notes, export_medical_notes, generate_board_narrative, export_assurance_pack, export_reports (the six raw KPI/incident/CAPA/audit/evidence-map/framework-readiness exports), approve_documents_groupwide, view_all_properties, etc. Never inferred from role — see docs/2026-07-zoho-catalyst-access-and-dashboard-model.md for which of the 9 access layers may be GRANTED each of these (grantable does not mean automatic).",
       "columns": [
         { "column_name": "code", "type": "text", "notNull": true, "unique": true },
         { "column_name": "description", "type": "text", "notNull": true },

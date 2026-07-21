@@ -1,0 +1,47 @@
+{
+  "_comment": "Control-maturity scoring, critical gaps, and framework readiness snapshots. Phase 8. Controls/Frameworks/FrameworkRequirements/ControlFrameworkMappings already live in 02-master-data.json — this file adds the per-property SCORING layer on top of that static master data. The critical-gap override math itself (MIN-of-dimension, capped-at-1 rollup) is in functions/shared/pure/maturity.ts and is NOT re-implemented here — this schema just persists its inputs and outputs.",
+  "tables": [
+    {
+      "table_name": "ControlAssessments",
+      "scope": "Org",
+      "comment": "One row per (control, property, dimension, assessment event) — append-only, never overwritten, so a control's maturity history is reconstructable. The SERVICE layer reads only the latest row per (control_id, property_id, dimension) when computing a rollup.",
+      "columns": [
+        { "column_name": "control_id", "type": "lookup", "references": "Controls", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true, "comment": "The row-scoping column — every query MUST run through propertyScopeClause()." },
+        { "column_name": "dimension", "type": "text", "notNull": true, "comment": "policy | procedure | implementation | effectiveness" },
+        { "column_name": "maturity_score", "type": "bigint", "notNull": true, "comment": "0-4. A score of <=1 on a life-safety-critical or legal control is a critical gap — see isCriticalGap() in maturity.ts." },
+        { "column_name": "notes", "type": "text", "nullable": true, "comment": "E.g. 'Fire safety certificate expired 2026-06-01' — the human-readable reason behind a low score." },
+        { "column_name": "assessed_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "next_review_date", "type": "date", "nullable": true, "comment": "Control review cycle." }
+      ]
+    },
+    {
+      "table_name": "CriticalGaps",
+      "scope": "Org",
+      "comment": "One open row per (control, property) currently in a critical-gap state — created when an assessment drops a life-safety-critical/legal control to <=1 on any dimension, resolved (resolved_at set, never deleted) when a later assessment clears it. Read directly by api-dashboard-summary's getCriticalGapsPreview().",
+      "columns": [
+        { "column_name": "control_id", "type": "lookup", "references": "Controls", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "reason", "type": "text", "notNull": true },
+        { "column_name": "identified_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "resolved_at", "type": "datetime", "nullable": true },
+        { "column_name": "resolved_by", "type": "lookup", "references": "Users", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "FrameworkReadinessSnapshots",
+      "scope": "Org",
+      "comment": "Precomputed rollup per (framework, property-or-null-for-group-wide) — read by the framework readiness strip (docs/2026-07-zoho-catalyst-access-and-dashboard-model.md §4) instead of joining Controls/ControlAssessments/ControlFrameworkMappings live on every dashboard load. Recomputed whenever a ControlAssessment is recorded for a mapped control, or on a Cron schedule (Phase 13).",
+      "columns": [
+        { "column_name": "framework_id", "type": "lookup", "references": "Frameworks", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true, "comment": "Null = group-wide rollup." },
+        { "column_name": "average_score", "type": "decimal", "nullable": true },
+        { "column_name": "rollup_score", "type": "decimal", "nullable": true, "comment": "average_score after the critical-gap cap is applied — this is what's actually shown as readiness %." },
+        { "column_name": "is_capped", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "mapped_control_count", "type": "bigint", "notNull": true },
+        { "column_name": "calculated_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    }
+  ]
+}

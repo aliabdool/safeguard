@@ -1,0 +1,29 @@
+{
+  "_comment": "Minimal materiality/climate-risk persistence — added in Phase 11 so data-quality exceptions 8 and 9 (materiality topic missing financial score, climate risk missing residual score) are checked against real tables rather than being hypothetical. Full materiality/climate workflow (scoring UI, IFRS S1/S2 narrative generation) uses the pure logic already ported in functions/shared/pure/materiality-scoring.ts and climate-risk.ts; this schema is deliberately scoped to what those data-quality checks need.",
+  "tables": [
+    {
+      "table_name": "MaterialTopics",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "topic", "type": "text", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true, "comment": "Null = group-wide topic." },
+        { "column_name": "gri_impact_materiality_score", "type": "decimal", "nullable": true },
+        { "column_name": "ifrs_financial_materiality_score", "type": "decimal", "nullable": true, "comment": "Null triggers the 'materiality topic missing financial score' data-quality exception." },
+        { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "ClimateRisks",
+      "scope": "Org",
+      "comment": "IFRS S2 climate-related H&S risks ONLY — heat stress, extreme-weather exposure, wildfire smoke, etc. Never ordinary incidents.",
+      "columns": [
+        { "column_name": "hazard_type", "type": "text", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "likelihood_score", "type": "bigint", "nullable": true },
+        { "column_name": "impact_score", "type": "bigint", "nullable": true },
+        { "column_name": "residual_risk_score", "type": "decimal", "nullable": true, "comment": "Null triggers the 'climate risk missing residual risk score' data-quality exception." },
+        { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    }
+  ]
+}
