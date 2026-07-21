@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.catalystrc
+catalyst-config.json
+.env
