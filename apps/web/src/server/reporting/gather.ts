@@ -1,21 +1,11 @@
 import "server-only";
 
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
-
-import { getDb } from "@/db";
-import {
-  audits,
-  auditFindings,
-  capaActions,
-  controlAssessments,
-  controls,
-  properties,
-} from "@/db/schema";
+import type { CatalystApp, CatalystRow } from "@/lib/catalyst/app";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi, type KpiTileResult } from "@/server/kpi/calculate";
 import { financialYearFor } from "@/server/kpi/period";
 
-import type { AssurancePackInput } from "./assurance-pack";
+import type { AssurancePackInput, OpenFindingRow } from "./assurance-pack";
 import type { BoardNarrativeInput } from "./board-narrative";
 
 const NARRATIVE_KPI_CODES = [
@@ -36,17 +26,15 @@ const NARRATIVE_KPI_CODES = [
   "LEGAL_COMPLIANCE",
 ];
 
-async function scopeMeta(propertyId: string | null, asOfAnchor: Date) {
-  const db = getDb();
+async function scopeMeta(catalystApp: CatalystApp, propertyId: string | null, asOfAnchor: Date) {
   const { fyLabel, period } = financialYearFor(asOfAnchor);
   let propertyLabel = "All accessible properties";
   if (propertyId) {
-    const [row] = await db
-      .select({ name: properties.name })
-      .from(properties)
-      .where(eq(properties.id, propertyId))
-      .limit(1);
-    propertyLabel = row?.name ?? propertyLabel;
+    const rows = (await catalystApp.datastore().table("Properties").getRows({
+      criteria: `Properties.ROWID == '${propertyId}'`,
+      maxRows: 1,
+    })) as Array<CatalystRow & { name: string }>;
+    propertyLabel = rows[0]?.name ?? propertyLabel;
   }
   return { fyLabel, period, propertyLabel };
 }
@@ -62,10 +50,11 @@ async function gatherKpis(
 }
 
 export async function gatherBoardNarrativeInput(
+  catalystApp: CatalystApp,
   propertyId: string | null,
   asOfAnchor: Date,
 ): Promise<BoardNarrativeInput> {
-  const { fyLabel, period, propertyLabel } = await scopeMeta(propertyId, asOfAnchor);
+  const { fyLabel, period, propertyLabel } = await scopeMeta(catalystApp, propertyId, asOfAnchor);
   const [kpis, dataQuality] = await Promise.all([
     gatherKpis(propertyId, asOfAnchor),
     computeDataQuality({ propertyId, periodStart: period.start, periodEnd: period.end }),
@@ -73,68 +62,72 @@ export async function gatherBoardNarrativeInput(
   return { fyLabel, propertyLabel, generatedAt: new Date(), kpis, dataQuality };
 }
 
+/**
+ * Reads CriticalGaps/AuditFindings/CAPA straight out of Catalyst via ZCQL — those tables belong
+ * to the framework/audits/capa modules (out of scope for this migration slice, being ported by
+ * other engineers in parallel), but this is a read-only cross-cutting report query, not a change
+ * to any of those modules' own files. Mirrors the equivalent queries already proven in
+ * apps/catalyst/functions/api-reports/index.ts, including using AuditFindings.ROWID as the
+ * finding "number" (that table has no separate finding_number column — matching the existing
+ * reference implementation rather than inventing a new one).
+ */
 export async function gatherAssurancePackInput(
+  catalystApp: CatalystApp,
   propertyId: string | null,
   asOfAnchor: Date,
 ): Promise<AssurancePackInput> {
-  const db = getDb();
-  const { fyLabel, period, propertyLabel } = await scopeMeta(propertyId, asOfAnchor);
+  const { fyLabel, period, propertyLabel } = await scopeMeta(catalystApp, propertyId, asOfAnchor);
 
   const [kpis, dataQuality] = await Promise.all([
     gatherKpis(propertyId, asOfAnchor),
     computeDataQuality({ propertyId, periodStart: period.start, periodEnd: period.end }),
   ]);
 
-  const gapScopePredicate = propertyId
-    ? eq(controlAssessments.propertyId, propertyId)
-    : undefined;
-  const criticalGapRows = await db
-    .selectDistinct({ controlId: controlAssessments.controlId })
-    .from(controlAssessments)
-    .where(and(eq(controlAssessments.isCriticalGap, true), gapScopePredicate));
+  const zcql = catalystApp.zcql();
 
-  const auditScopePredicate = propertyId ? eq(audits.propertyId, propertyId) : undefined;
-  const scopedAudits = await db
-    .select({ id: audits.id })
-    .from(audits)
-    .where(auditScopePredicate);
-  const scopedAuditIds = scopedAudits.map((a) => a.id);
+  // Matches the pre-migration behaviour exactly: when no single property is selected, these
+  // queries are unscoped (no WHERE predicate) rather than restricted to the caller's accessible
+  // property set — same as the Drizzle version's `gapScopePredicate = propertyId ? eq(...) :
+  // undefined`. Not a new gap introduced by this migration, just preserved as-is.
+  const gapScope = propertyId ? `CriticalGaps.property_id == '${propertyId}' && ` : "";
+  const gapRows = (await zcql.executeZCQLQuery(
+    `select count(distinct CriticalGaps.control_id) as n from CriticalGaps where ${gapScope}CriticalGaps.resolved_at is null`,
+  )) as Array<{ CriticalGaps: { n: string } }>;
+  const criticalGapControlCount = Number(gapRows[0]?.CriticalGaps.n ?? 0);
 
-  const openFindingRows =
-    scopedAuditIds.length === 0
-      ? []
-      : await db
-          .select({
-            findingNumber: auditFindings.findingNumber,
-            classification: auditFindings.classification,
-            controlCode: controls.controlCode,
-            description: auditFindings.description,
-          })
-          .from(auditFindings)
-          .leftJoin(controls, eq(controls.id, auditFindings.controlId))
-          .where(
-            and(
-              inArray(auditFindings.auditId, scopedAuditIds),
-              inArray(auditFindings.classification, ["critical_nc", "major_nc"]),
-              ne(auditFindings.status, "closed"),
-            ),
-          );
+  const findingScope = propertyId ? `Audits.property_id == '${propertyId}' && ` : "";
+  const findingRows = (await zcql.executeZCQLQuery(
+    `select AuditFindings.ROWID, AuditFindings.classification, AuditFindings.description, Controls.control_code
+     from AuditFindings left join Audits on AuditFindings.audit_id = Audits.ROWID
+     left join Controls on AuditFindings.control_id = Controls.ROWID
+     where ${findingScope}AuditFindings.classification in ('critical_nc','major_nc') && AuditFindings.status != 'closed'`,
+  )) as Array<{
+    AuditFindings: { ROWID: string; classification: string; description: string };
+    Controls: { control_code: string } | null;
+  }>;
+  const openFindings: OpenFindingRow[] = findingRows.map((r) => ({
+    findingNumber: r.AuditFindings.ROWID,
+    classification: r.AuditFindings.classification,
+    controlCode: r.Controls?.control_code ?? null,
+    description: r.AuditFindings.description,
+  }));
 
-  const capaScopePredicate = propertyId ? eq(capaActions.propertyId, propertyId) : undefined;
-  const capaStatusRows = await db
-    .select({ status: capaActions.status, n: sql<number>`count(*)::int` })
-    .from(capaActions)
-    .where(capaScopePredicate)
-    .groupBy(capaActions.status);
-  const capaStatusCounts = Object.fromEntries(capaStatusRows.map((r) => [r.status, r.n]));
+  const capaScope = propertyId ? ` where CAPA.property_id == '${propertyId}'` : "";
+  const capaRows = (await zcql.executeZCQLQuery(
+    `select CAPA.status, count(CAPA.ROWID) as n from CAPA${capaScope} group by CAPA.status`,
+  )) as Array<{ CAPA: { status: string; n: string } }>;
+  const capaStatusCounts: Record<string, number> = {};
+  for (const { CAPA: c } of capaRows) {
+    capaStatusCounts[c.status] = Number(c.n);
+  }
 
   return {
     fyLabel,
     propertyLabel,
     generatedAt: new Date(),
     kpis,
-    criticalGapControlCount: criticalGapRows.length,
-    openFindings: openFindingRows,
+    criticalGapControlCount,
+    openFindings,
     capaStatusCounts,
     dataQuality,
   };

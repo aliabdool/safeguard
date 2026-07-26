@@ -45,8 +45,10 @@ deliverable) for the enforcement pattern once it lands.
   KPISnapshots (the 22 live-calculated KPIs — see `functions/shared/services/kpi-service.ts`)
 - `09-materiality-climate.json` — MaterialTopics, MaterialityConsultations, ClimateRisks — full
   parity with `apps/web`'s materiality.ts/climate-risk.ts (expanded from the original Phase 11
-  minimal scope during the Supabase-to-Catalyst migration); scoring logic stays in the pure
-  functions already ported in `functions/shared/pure/materiality-scoring.ts` and `climate-risk.ts`
+  minimal scope during the Supabase-to-Catalyst migration, with ClimateRisks completed to actual
+  full parity in the apps/web Phase C reports/materiality/climate-risk slice); scoring logic stays
+  in the pure functions already ported in `functions/shared/pure/materiality-scoring.ts` and
+  `climate-risk.ts`
 - `10-data-quality.json` — DataQualityExceptions (the nine named rules — see
   `functions/shared/pure/data-quality-rules.ts`)
 - `11-reports.json` — ReportExports (every export — board narrative, assurance pack, or a raw
@@ -54,6 +56,8 @@ deliverable) for the enforcement pattern once it lands.
 - `12-notifications.json` — Notifications (the fourteen named triggers — see
   `functions/shared/pure/notification-rules.ts`; scaffolded per management's instruction, real
   and tested rule logic, outbound email/SMS delivery deferred to when a provider is configured)
+  and ScheduledReminders (added in the apps/web Phase C reports/cron slice — feeds the
+  `/api/cron/reminders` job)
 - `13-files.json` — Files, FileAccessLog — file governance metadata (checksum, validation status,
   view/download audit trail) for everything stored in Catalyst File Store, replacing the tracking
   Supabase Storage + `files`/`file_access_log` provided

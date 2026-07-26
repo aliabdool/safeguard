@@ -1,5 +1,5 @@
 {
-  "_comment": "Notifications. Phase 13 — scaffolded per management's instruction. The fourteen trigger rules are real and unit-tested (functions/shared/pure/notification-rules.ts); this table is what they write to for in-app display. Outbound email/SMS delivery needs a mail/SMS provider configured in your Zoho org (env_variables on the cron Function) — not needed for management's initial test build, called out explicitly rather than silently assumed.",
+  "_comment": "Notifications. Phase 13 — scaffolded per management's instruction. The fourteen trigger rules are real and unit-tested (functions/shared/pure/notification-rules.ts); this table is what they write to for in-app display. Outbound email/SMS delivery needs a mail/SMS provider configured in your Zoho org (env_variables on the cron Function) — not needed for management's initial test build, called out explicitly rather than silently assumed. ScheduledReminders was added during the Supabase-to-Catalyst migration (apps/web Phase C reports/cron slice) — missing from the original Phase 13 port; it's what apps/web's /api/cron/reminders job reads to turn a due, unsent reminder into a Notifications row.",
   "tables": [
     {
       "table_name": "Notifications",
@@ -7,13 +7,27 @@
       "columns": [
         { "column_name": "recipient_user_id", "type": "lookup", "references": "Users", "notNull": true },
         { "column_name": "notification_type", "type": "text", "notNull": true, "comment": "One of the 14 named triggers — see notification-rules.ts." },
-        { "column_name": "message", "type": "text", "notNull": true },
+        { "column_name": "title", "type": "text", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port. apps/web's notifications.title (short headline, shown bold) is distinct from the body/message text; the original Phase 13 scope only had a single `message` column, which apps/web's account page and cron reminder job both need split in two." },
+        { "column_name": "message", "type": "text", "notNull": true, "comment": "The body text — mirrors apps/web's notifications.body." },
         { "column_name": "entity_type", "type": "text", "notNull": true },
         { "column_name": "entity_id", "type": "text", "notNull": true },
         { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true },
         { "column_name": "severity", "type": "text", "notNull": true, "comment": "info | warning | critical" },
         { "column_name": "read_at", "type": "datetime", "nullable": true },
         { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "ScheduledReminders",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 13 port. Ported from apps/web scheduled_reminders. Populated by the CAPA and Documents modules when a due_date/review_date is set (their own Phase C migration slices), consumed by apps/web's /api/cron/reminders job (src/server/cron/process-reminders.ts), which turns each due, unsent row into a Notifications row for the responsible user and then stamps sent_at so a retried cron invocation can't double-notify.",
+      "columns": [
+        { "column_name": "related_entity_type", "type": "text", "notNull": true, "comment": "capa_actions | document_versions" },
+        { "column_name": "related_entity_id", "type": "text", "notNull": true, "comment": "ROWID of the CAPA or DocumentVersions row this reminder is for." },
+        { "column_name": "remind_at", "type": "datetime", "notNull": true },
+        { "column_name": "reminder_type", "type": "text", "notNull": true, "comment": "capa_due_soon | document_review_due" },
+        { "column_name": "sent_at", "type": "datetime", "nullable": true },
+        { "column_name": "channel", "type": "text", "notNull": true, "default": "in_app" }
       ]
     }
   ]
