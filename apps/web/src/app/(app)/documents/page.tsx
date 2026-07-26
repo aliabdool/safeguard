@@ -1,5 +1,5 @@
+import { headers } from "next/headers";
 import Link from "next/link";
-import { desc } from "drizzle-orm";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getDb } from "@/db";
-import { documents } from "@/db/schema";
+import { catalystAppFromHeaders } from "@/lib/catalyst/app";
 
 const STATUS_VARIANT: Record<
   string,
@@ -26,9 +25,22 @@ const STATUS_VARIANT: Record<
   archived: "secondary",
 };
 
+interface DocumentListRow {
+  ROWID: string;
+  document_number: string;
+  title: string;
+  category: string;
+  confidentiality_level: string;
+  status: string;
+}
+
 export default async function DocumentsPage() {
-  const db = getDb();
-  const rows = await db.select().from(documents).orderBy(desc(documents.createdAt)).limit(100);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const rows = (await catalystApp.zcql().executeZCQLQuery(
+    `select Documents.ROWID, Documents.document_number, Documents.title, Documents.category, Documents.confidentiality_level, Documents.status
+     from Documents order by Documents.created_at desc limit 100`,
+  )) as Array<{ Documents: DocumentListRow }>;
+  const docs = rows.map((r) => r.Documents);
 
   return (
     <div className="flex flex-col gap-6">
@@ -47,7 +59,7 @@ export default async function DocumentsPage() {
         </Button>
       </div>
 
-      {rows.length === 0 ? (
+      {docs.length === 0 ? (
         <p className="text-muted-foreground text-sm">No documents yet.</p>
       ) : (
         <Table>
@@ -61,19 +73,19 @@ export default async function DocumentsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((doc) => (
-              <TableRow key={doc.id}>
+            {docs.map((doc) => (
+              <TableRow key={doc.ROWID}>
                 <TableCell>
                   <Link
-                    href={`/documents/${doc.id}`}
+                    href={`/documents/${doc.ROWID}`}
                     className="font-medium underline underline-offset-4"
                   >
-                    {doc.documentNumber}
+                    {doc.document_number}
                   </Link>
                 </TableCell>
                 <TableCell>{doc.title}</TableCell>
                 <TableCell>{doc.category}</TableCell>
-                <TableCell>{doc.confidentialityLevel}</TableCell>
+                <TableCell>{doc.confidentiality_level}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_VARIANT[doc.status] ?? "default"}>
                     {doc.status.replace("_", " ")}

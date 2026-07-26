@@ -40,8 +40,12 @@ deliverable) for the enforcement pattern once it lands.
   corrective_action, preventive_action, hierarchy_of_control, cost, required_evidence,
   effectiveness_review_date, final_approved_by and final_approved_at were added during the
   Supabase-to-Catalyst migration — missing from the original Phase 6 port)
-- `05-documents.json` — Documents, DocumentVersions, DocumentApprovals, DocumentEvidenceLinks
-  (many-to-many — one approved document can support many controls across many frameworks)
+- `05-documents.json` — Documents, DocumentPropertyApplicability, DocumentDepartmentApplicability,
+  DocumentVersions, DocumentApprovals, DocumentEvidenceLinks (many-to-many — one approved document
+  can support many controls across many frameworks; the applicability tables and several
+  Documents/DocumentVersions/DocumentEvidenceLinks columns were added during the Phase C documents
+  module migration — present in apps/web's Postgres schema but missing from the original Phase 7
+  port)
 - `06-controls-frameworks.json` — ControlAssessments (department_id, period_label, and
   is_critical_gap were added during the Supabase-to-Catalyst migration — missing from the original
   Phase 8 port), CriticalGaps, FrameworkReadinessSnapshots (Controls/Frameworks/

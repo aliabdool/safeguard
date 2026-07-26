@@ -1,15 +1,39 @@
 {
-  "_comment": "Documents/evidence library. Phase 7. A single DocumentVersions row can be linked from many DocumentEvidenceLinks rows (one approved fire-safety certificate can support several controls across several frameworks at once) — this many-to-many shape is what powers the document detail page's 'Supports N records across M frameworks' summary via computeEvidenceReuseSummary() in functions/shared/pure/evidence-reuse.ts. Expiry is evaluated live from expiry_date against the current date every time a link is used as evidence (isValidEvidence() in document-rules.ts) — never cached as a stored boolean that could go stale.",
+  "_comment": "Documents/evidence library. Phase 7. A single DocumentVersions row can be linked from many DocumentEvidenceLinks rows (one approved fire-safety certificate can support several controls across several frameworks at once) — this many-to-many shape is what powers the document detail page's 'Supports N records across M frameworks' summary via computeEvidenceReuseSummary() in functions/shared/pure/evidence-reuse.ts. Expiry is evaluated live from expiry_date against the current date every time a link is used as evidence (isValidEvidence() in document-rules.ts) — never cached as a stored boolean that could go stale. Documents.document_number/current_version_id/confidentiality_level/retention_period_months/status/updated_at, DocumentVersions.effective_date/change_summary, DocumentEvidenceLinks.evidence_level/purpose/page_or_section/reporting_period, and the DocumentPropertyApplicability/DocumentDepartmentApplicability many-to-many tables were added during the Phase C (documents module) Supabase-to-Catalyst migration — all were present on apps/web's Postgres schema and in active use by the documents Server Actions/UI, but missing from the original Phase 7 port.",
   "tables": [
     {
       "table_name": "Documents",
       "scope": "Org",
       "columns": [
+        { "column_name": "document_number", "type": "text", "notNull": true, "unique": true, "comment": "Added during the Supabase-to-Catalyst migration — `DOC-{seq}` global sequence, apps/web's documents.document_number — missing from the original Phase 7 port." },
         { "column_name": "title", "type": "text", "notNull": true },
         { "column_name": "category", "type": "text", "notNull": true, "comment": "policy | procedure | risk_assessment | statutory_certificate | training_record | inspection_report | other" },
         { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true, "comment": "Nullable — some documents (group-wide policy) aren't property-scoped." },
         { "column_name": "owner_id", "type": "lookup", "references": "Users", "notNull": true },
-        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" }
+        { "column_name": "current_version_id", "type": "lookup", "references": "DocumentVersions", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — apps/web's documents.current_version_id, set when a version is approved — missing from the original Phase 7 port." },
+        { "column_name": "confidentiality_level", "type": "text", "notNull": true, "default": "internal", "comment": "Added during the Supabase-to-Catalyst migration — public | internal | confidential | restricted, apps/web's documents.confidentiality_level — missing from the original Phase 7 port." },
+        { "column_name": "retention_period_months", "type": "bigint", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — apps/web's documents.retention_period_months — missing from the original Phase 7 port." },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "draft", "comment": "Added during the Supabase-to-Catalyst migration — draft | under_review | approved | expired | superseded | archived, apps/web's documents.status — missing from the original Phase 7 port." },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "updated_at", "type": "datetime", "notNull": true, "default": "now", "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 7 port." }
+      ]
+    },
+    {
+      "table_name": "DocumentPropertyApplicability",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — many-to-many, ported from apps/web's document_property_applicability — missing from the original Phase 7 port (which only modelled a single nullable Documents.property_id).",
+      "columns": [
+        { "column_name": "document_id", "type": "lookup", "references": "Documents", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true }
+      ]
+    },
+    {
+      "table_name": "DocumentDepartmentApplicability",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — many-to-many, ported from apps/web's document_department_applicability — missing from the original Phase 7 port.",
+      "columns": [
+        { "column_name": "document_id", "type": "lookup", "references": "Documents", "notNull": true },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "notNull": true }
       ]
     },
     {
@@ -20,9 +44,11 @@
         { "column_name": "document_id", "type": "lookup", "references": "Documents", "notNull": true },
         { "column_name": "version_number", "type": "bigint", "notNull": true },
         { "column_name": "file_id", "type": "text", "notNull": true, "comment": "Catalyst File Store reference." },
-        { "column_name": "status", "type": "text", "notNull": true, "default": "draft", "comment": "draft | pending_approval | approved | rejected | superseded — validated against isValidDocumentStatusTransition()." },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "draft", "comment": "draft | under_review | approved | expired | superseded | archived — matches apps/web's document_status enum (corrected during the Supabase-to-Catalyst migration; previously documented here as draft | pending_approval | approved | rejected | superseded, which didn't match the actual values the app writes)." },
+        { "column_name": "effective_date", "type": "date", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — apps/web's document_versions.effective_date — missing from the original Phase 7 port." },
         { "column_name": "expiry_date", "type": "date", "nullable": true },
         { "column_name": "review_date", "type": "date", "nullable": true },
+        { "column_name": "change_summary", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — apps/web's document_versions.change_summary — missing from the original Phase 7 port." },
         { "column_name": "uploaded_by", "type": "lookup", "references": "Users", "notNull": true },
         { "column_name": "uploaded_at", "type": "datetime", "notNull": true, "default": "now" }
       ]
@@ -42,11 +68,15 @@
     {
       "table_name": "DocumentEvidenceLinks",
       "scope": "Org",
-      "comment": "Many-to-many: one approved DocumentVersion can support many linked entities (control_assessment, capa, audit_finding, climate_risk) and one linked entity can cite many documents. This is the table computeEvidenceReuseSummary() reads to produce 'Supports N records across M frameworks'.",
+      "comment": "Many-to-many: one approved DocumentVersion can support many linked entities (control_assessment, kpi_definition, audit, audit_finding, capa_action, disclosure, climate_risk) and one linked entity can cite many documents. This is the table computeEvidenceReuseSummary() reads to produce 'Supports N records across M frameworks'.",
       "columns": [
         { "column_name": "document_version_id", "type": "lookup", "references": "DocumentVersions", "notNull": true },
-        { "column_name": "linked_entity_type", "type": "text", "notNull": true, "comment": "control_assessment | capa | audit_finding | climate_risk" },
+        { "column_name": "linked_entity_type", "type": "text", "notNull": true, "comment": "control_assessment | kpi_definition | audit | audit_finding | capa_action | disclosure | climate_risk — corrected during the Supabase-to-Catalyst migration to match apps/web's evidence_linked_entity_type enum (previously documented here as control_assessment | capa | audit_finding | climate_risk)." },
         { "column_name": "linked_entity_id", "type": "text", "notNull": true },
+        { "column_name": "evidence_level", "type": "text", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — policy | procedure | implementation | effectiveness, apps/web's evidence_links.evidence_level — missing from the original Phase 7 port." },
+        { "column_name": "purpose", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — apps/web's evidence_links.purpose — missing from the original Phase 7 port." },
+        { "column_name": "page_or_section", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — apps/web's evidence_links.page_or_section — missing from the original Phase 7 port." },
+        { "column_name": "reporting_period", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — apps/web's evidence_links.reporting_period — missing from the original Phase 7 port." },
         { "column_name": "linked_by", "type": "lookup", "references": "Users", "notNull": true },
         { "column_name": "linked_at", "type": "datetime", "notNull": true, "default": "now" }
       ]
