@@ -25,7 +25,7 @@ deliverable) for the enforcement pattern once it lands.
 ## Files in this directory
 
 - `01-identity-and-access.json` — Users, Roles, Permissions, UserRoles, UserPermissions,
-  UserPropertyAccess, UserDepartmentAccess, AuditTrail
+  UserPropertyAccess, UserDepartmentAccess, AuditTrail, RegistrationRequests
 - `02-master-data.json` — Properties, Departments, IncidentTypes, InjuryMechanisms,
   RootCauseCategories, Frameworks, Controls, KPIDefinitions
 - `03-incidents.json` — Incidents, IncidentPersons, IncidentWitnesses, IncidentInvestigation,
@@ -38,11 +38,12 @@ deliverable) for the enforcement pattern once it lands.
   (Controls/Frameworks/FrameworkRequirements/ControlFrameworkMappings master data already lives in
   `02-master-data.json`)
 - `07-audits.json` — Audits, AuditFindings, AuditFindingCAPALinks
-- `08-kpi.json` — KPISnapshots (the 22 live-calculated KPIs — see
-  `functions/shared/services/kpi-service.ts`)
-- `09-materiality-climate.json` — MaterialTopics, ClimateRisks (minimal — scoped to what the
-  Phase 11 data-quality checks need; full materiality/climate workflow reuses the pure logic in
-  `functions/shared/pure/materiality-scoring.ts` and `climate-risk.ts`)
+- `08-kpi.json` — ExposureData (hours worked / occupied room nights feeding rate-based KPIs),
+  KPISnapshots (the 22 live-calculated KPIs — see `functions/shared/services/kpi-service.ts`)
+- `09-materiality-climate.json` — MaterialTopics, MaterialityConsultations, ClimateRisks — full
+  parity with `apps/web`'s materiality.ts/climate-risk.ts (expanded from the original Phase 11
+  minimal scope during the Supabase-to-Catalyst migration); scoring logic stays in the pure
+  functions already ported in `functions/shared/pure/materiality-scoring.ts` and `climate-risk.ts`
 - `10-data-quality.json` — DataQualityExceptions (the nine named rules — see
   `functions/shared/pure/data-quality-rules.ts`)
 - `11-reports.json` — ReportExports (every export — board narrative, assurance pack, or a raw
@@ -50,3 +51,6 @@ deliverable) for the enforcement pattern once it lands.
 - `12-notifications.json` — Notifications (the fourteen named triggers — see
   `functions/shared/pure/notification-rules.ts`; scaffolded per management's instruction, real
   and tested rule logic, outbound email/SMS delivery deferred to when a provider is configured)
+- `13-files.json` — Files, FileAccessLog — file governance metadata (checksum, validation status,
+  view/download audit trail) for everything stored in Catalyst File Store, replacing the tracking
+  Supabase Storage + `files`/`file_access_log` provided

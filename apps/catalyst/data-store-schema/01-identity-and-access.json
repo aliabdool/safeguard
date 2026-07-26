@@ -10,9 +10,18 @@
         { "column_name": "full_name", "type": "text", "notNull": true },
         { "column_name": "email", "type": "text", "notNull": true, "unique": true },
         { "column_name": "status", "type": "enum", "values": ["pending_approval", "active", "suspended", "rejected"], "notNull": true, "default": "pending_approval" },
+        { "column_name": "phone", "type": "text", "nullable": true },
+        { "column_name": "job_title", "type": "text", "nullable": true },
+        { "column_name": "employment_type", "type": "text", "nullable": true },
+        { "column_name": "is_external", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "external_expiry_date", "type": "date", "nullable": true },
         { "column_name": "approved_by", "type": "lookup", "references": "Users", "nullable": true },
         { "column_name": "approved_at", "type": "datetime", "nullable": true },
-        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" }
+        { "column_name": "suspended_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "suspended_at", "type": "datetime", "nullable": true },
+        { "column_name": "suspension_reason", "type": "text", "nullable": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "updated_at", "type": "datetime", "notNull": true, "default": "now" }
       ]
     },
     {
@@ -87,10 +96,30 @@
         { "column_name": "entity_type", "type": "text", "notNull": true },
         { "column_name": "entity_id", "type": "text", "nullable": true },
         { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "nullable": true },
+        { "column_name": "previous_value", "type": "text", "nullable": true, "comment": "JSON, stored as text — Data Store has no native JSONB column." },
+        { "column_name": "new_value", "type": "text", "nullable": true, "comment": "JSON, stored as text — Data Store has no native JSONB column." },
         { "column_name": "reason", "type": "text", "nullable": true },
+        { "column_name": "request_id", "type": "text", "nullable": true },
         { "column_name": "ip_address", "type": "text", "nullable": true },
         { "column_name": "user_agent", "type": "text", "nullable": true },
         { "column_name": "occurred_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "RegistrationRequests",
+      "scope": "Org",
+      "comment": "Self-registration request metadata — ported from apps/web registration_requests. Separate from Users.status so the requested role/property and any rejection reason survive even after the request is actioned.",
+      "columns": [
+        { "column_name": "user_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "requested_role_id", "type": "lookup", "references": "Roles", "nullable": true },
+        { "column_name": "requested_property_id", "type": "lookup", "references": "Properties", "nullable": true },
+        { "column_name": "justification", "type": "text", "nullable": true },
+        { "column_name": "status", "type": "enum", "values": ["pending", "approved", "rejected"], "notNull": true, "default": "pending" },
+        { "column_name": "reviewed_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "reviewed_at", "type": "datetime", "nullable": true },
+        { "column_name": "rejection_reason", "type": "text", "nullable": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" }
       ]
     }
   ]
