@@ -1,13 +1,12 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
-import { getDb } from "@/db";
-import { auditTeamMembers, audits } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextAuditReference } from "@/server/audits/number";
 import { hasPropertyAccess, requireRole } from "@/server/permissions";
@@ -23,8 +22,8 @@ const createSchema = z.object({
   ]),
   scope: z.string().optional(),
   criteria: z.string().optional(),
-  propertyId: z.string().uuid(),
-  leadAuditorId: z.string().uuid(),
+  propertyId: z.string(),
+  leadAuditorId: z.string(),
   plannedStart: z.string().optional(),
   plannedEnd: z.string().optional(),
 });
@@ -56,46 +55,46 @@ export async function createAuditAction(
     return { error: "No access to this property." };
   }
 
-  const db = getDb();
-  const auditReference = await nextAuditReference();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+  const auditReference = await nextAuditReference(catalystApp);
 
-  const [created] = await db
-    .insert(audits)
-    .values({
-      auditReference,
-      type: data.type,
-      scope: data.scope ?? null,
-      criteria: data.criteria ?? null,
-      propertyId: data.propertyId,
-      leadAuditorId: data.leadAuditorId,
-      plannedStart: data.plannedStart || null,
-      plannedEnd: data.plannedEnd || null,
-      status: "planned",
-    })
-    .returning({ id: audits.id });
+  const created = await datastore.table("Audits").insertRow({
+    audit_number: auditReference,
+    audit_type: data.type,
+    scope: data.scope ?? null,
+    criteria: data.criteria ?? null,
+    property_id: data.propertyId,
+    lead_auditor_id: data.leadAuditorId,
+    planned_start: data.plannedStart || null,
+    planned_end: data.plannedEnd || null,
+    status: "planned",
+    created_at: new Date().toISOString(),
+  });
+  const auditId = String(created.ROWID);
 
-  await db.insert(auditTeamMembers).values({
-    auditId: created!.id,
-    userId: data.leadAuditorId,
-    roleOnAudit: "lead_auditor",
+  await datastore.table("AuditTeamMembers").insertRow({
+    audit_id: auditId,
+    user_id: data.leadAuditorId,
+    role_on_audit: "lead_auditor",
   });
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "record_created",
-    entityType: "audits",
-    entityId: created!.id,
+    entityType: "Audits",
+    entityId: auditId,
     propertyId: data.propertyId,
     newValue: { type: data.type, status: "planned" },
   });
 
   revalidatePath("/audits");
-  redirect(`/audits/${created!.id}`);
+  redirect(`/audits/${auditId}`);
 }
 
 const teamMemberSchema = z.object({
-  auditId: z.string().uuid(),
-  userId: z.string().uuid(),
+  auditId: z.string(),
+  userId: z.string(),
   roleOnAudit: z.string().min(1),
 });
 
@@ -113,13 +112,22 @@ export async function addAuditTeamMemberAction(
     return { error: "Invalid team member." };
   }
 
-  const db = getDb();
-  await db.insert(auditTeamMembers).values(parsed.data).onConflictDoNothing();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  // apps/web's audit_team_members table has no unique constraint on (audit_id, user_id) either —
+  // the original Postgres insert used onConflictDoNothing() with no arbiter target, which is a
+  // no-op absent a matching unique constraint, so this is a plain insert there too.
+  await datastore.table("AuditTeamMembers").insertRow({
+    audit_id: parsed.data.auditId,
+    user_id: parsed.data.userId,
+    role_on_audit: parsed.data.roleOnAudit,
+  });
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "record_created",
-    entityType: "audit_team_members",
+    entityType: "AuditTeamMembers",
     entityId: parsed.data.auditId,
     newValue: { userId: parsed.data.userId, roleOnAudit: parsed.data.roleOnAudit },
   });
@@ -142,34 +150,41 @@ export async function advanceAuditStatusAction(
   }
 
   const ctx = await requireRole(["INTERNAL_AUDITOR", "GROUP_HS_ADMIN", "SUPER_ADMIN"]);
-  const db = getDb();
-  const [audit] = await db.select().from(audits).where(eq(audits.id, auditId)).limit(1);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const auditRows = (await datastore.table("Audits").getRows({
+    criteria: `Audits.ROWID == '${auditId}'`,
+    maxRows: 1,
+  })) as Array<CatalystRow & { status: string }>;
+  const audit = auditRows[0];
   if (!audit) {
     return { error: "Unknown audit." };
   }
 
-  const currentIndex = STATUS_ORDER.indexOf(audit.status);
+  const currentIndex = STATUS_ORDER.indexOf(audit.status as AuditStatus);
   const targetIndex = STATUS_ORDER.indexOf(targetStatus);
   if (targetIndex !== currentIndex + 1) {
     return { error: `Cannot move from '${audit.status}' to '${targetStatus}'.` };
   }
 
-  const updates: { status: AuditStatus; actualStart?: string; actualEnd?: string } = {
+  const updates: Record<string, unknown> & { ROWID: string } = {
+    ROWID: auditId,
     status: targetStatus,
   };
   if (targetStatus === "in_progress") {
-    updates.actualStart = new Date().toISOString().slice(0, 10);
+    updates.actual_start = new Date().toISOString().slice(0, 10);
   }
   if (targetStatus === "closed") {
-    updates.actualEnd = new Date().toISOString().slice(0, 10);
+    updates.actual_end = new Date().toISOString().slice(0, 10);
   }
 
-  await db.update(audits).set(updates).where(eq(audits.id, auditId));
+  await datastore.table("Audits").updateRow(updates);
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "status_changed",
-    entityType: "audits",
+    entityType: "Audits",
     entityId: auditId,
     previousValue: { status: audit.status },
     newValue: { status: targetStatus },

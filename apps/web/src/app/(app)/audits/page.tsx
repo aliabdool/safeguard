@@ -1,5 +1,5 @@
+import { headers } from "next/headers";
 import Link from "next/link";
-import { desc, inArray } from "drizzle-orm";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getDb } from "@/db";
-import { audits, properties } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
+import { listProperties } from "@/server/identity/catalyst-identity";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning"> = {
   planned: "warning",
@@ -22,27 +22,32 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warn
   closed: "success",
 };
 
+interface AuditRow extends CatalystRow {
+  audit_number: string;
+  audit_type: string;
+  property_id: string;
+  status: string;
+  created_at: string;
+}
+
 export default async function AuditsPage() {
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
 
-  const allProperties = await db
-    .select({ id: properties.id, name: properties.name })
-    .from(properties);
+  const allProperties = await listProperties(catalystApp);
   const visiblePropertyIds = allProperties
     .filter((p) => ctx && hasPropertyAccess(ctx, p.id))
     .map((p) => p.id);
   const propertyName = new Map(allProperties.map((p) => [p.id, p.name]));
 
-  const rows =
+  const rows: AuditRow[] =
     visiblePropertyIds.length === 0
       ? []
-      : await db
-          .select()
-          .from(audits)
-          .where(inArray(audits.propertyId, visiblePropertyIds))
-          .orderBy(desc(audits.createdAt))
-          .limit(100);
+      : ((await catalystApp.datastore().table("Audits").getRows({
+          criteria: `Audits.property_id in (${visiblePropertyIds.map((id) => `'${id}'`).join(", ")})`,
+        })) as AuditRow[])
+          .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+          .slice(0, 100);
 
   return (
     <div className="flex flex-col gap-6">
@@ -73,17 +78,17 @@ export default async function AuditsPage() {
           </TableHeader>
           <TableBody>
             {rows.map((a) => (
-              <TableRow key={a.id}>
+              <TableRow key={a.ROWID}>
                 <TableCell>
                   <Link
-                    href={`/audits/${a.id}`}
+                    href={`/audits/${a.ROWID}`}
                     className="font-medium underline underline-offset-4"
                   >
-                    {a.auditReference}
+                    {a.audit_number}
                   </Link>
                 </TableCell>
-                <TableCell>{a.type.replace("_", " ")}</TableCell>
-                <TableCell>{propertyName.get(a.propertyId) ?? "—"}</TableCell>
+                <TableCell>{a.audit_type.replace("_", " ")}</TableCell>
+                <TableCell>{propertyName.get(a.property_id) ?? "—"}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_VARIANT[a.status] ?? "default"}>
                     {a.status.replace("_", " ")}

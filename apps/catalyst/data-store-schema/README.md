@@ -51,7 +51,10 @@ deliverable) for the enforcement pattern once it lands.
   Phase 8 port), CriticalGaps, FrameworkReadinessSnapshots (Controls/Frameworks/
   FrameworkRequirements/ControlFrameworkMappings master data already lives in
   `02-master-data.json`)
-- `07-audits.json` — Audits, AuditFindings, AuditFindingCAPALinks
+- `07-audits.json` — Audits, AuditFindings, AuditFindingCAPALinks, AuditTeamMembers,
+  AuditChecklistItems, AuditAssessments (the latter three, plus several Audits/AuditFindings date
+  and reference-number columns, were added during the Supabase-to-Catalyst migration — missing
+  from the original Phase 9 port)
 - `08-kpi.json` — ExposureData (hours worked / occupied room nights feeding rate-based KPIs),
   KPISnapshots (the 22 live-calculated KPIs — see `functions/shared/services/kpi-service.ts`)
 - `09-materiality-climate.json` — MaterialTopics, MaterialityConsultations, ClimateRisks — full

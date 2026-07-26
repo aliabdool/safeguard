@@ -1,12 +1,11 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
 
 import { FindingForm } from "./finding-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import { auditFindings, audits, controls } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
 const CLASSIFICATION_VARIANT: Record<
@@ -20,6 +19,18 @@ const CLASSIFICATION_VARIANT: Record<
   ofi: "default",
 };
 
+interface AuditRow extends CatalystRow {
+  audit_number: string;
+  property_id: string;
+}
+
+interface FindingRow extends CatalystRow {
+  finding_number: string;
+  description: string;
+  classification: string;
+  status: string;
+}
+
 export default async function FindingsPage({
   params,
 }: {
@@ -27,22 +38,31 @@ export default async function FindingsPage({
 }) {
   const { auditId } = await params;
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
 
-  const [audit] = await db.select().from(audits).where(eq(audits.id, auditId)).limit(1);
-  if (!audit || !ctx || !hasPropertyAccess(ctx, audit.propertyId)) {
+  const auditRows = (await datastore.table("Audits").getRows({
+    criteria: `Audits.ROWID == '${auditId}'`,
+    maxRows: 1,
+  })) as AuditRow[];
+  const audit = auditRows[0];
+  if (!audit || !ctx || !hasPropertyAccess(ctx, audit.property_id)) {
     notFound();
   }
 
   const [findings, allControls] = await Promise.all([
-    db.select().from(auditFindings).where(eq(auditFindings.auditId, auditId)),
-    db.select({ id: controls.id, controlCode: controls.controlCode }).from(controls),
+    datastore.table("AuditFindings").getRows({
+      criteria: `AuditFindings.audit_id == '${auditId}'`,
+    }) as Promise<FindingRow[]>,
+    datastore.table("Controls").getRows({}) as Promise<
+      Array<CatalystRow & { control_code: string }>
+    >,
   ]);
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <h1 className="text-2xl font-semibold tracking-tight">
-        Findings — {audit.auditReference}
+        Findings — {audit.audit_number}
       </h1>
 
       <Card>
@@ -50,17 +70,20 @@ export default async function FindingsPage({
           <CardTitle className="text-base">Raise a finding</CardTitle>
         </CardHeader>
         <CardContent>
-          <FindingForm auditId={auditId} controls={allControls} />
+          <FindingForm
+            auditId={auditId}
+            controls={allControls.map((c) => ({ id: c.ROWID, controlCode: c.control_code }))}
+          />
         </CardContent>
       </Card>
 
       <div className="flex flex-col gap-2">
         {findings.map((f) => (
-          <Link key={f.id} href={`/audits/findings/${f.id}`}>
+          <Link key={f.ROWID} href={`/audits/findings/${f.ROWID}`}>
             <Card className="hover:bg-accent/50">
               <CardContent className="flex items-center justify-between py-4">
                 <div>
-                  <p className="font-medium">{f.findingNumber}</p>
+                  <p className="font-medium">{f.finding_number}</p>
                   <p className="text-muted-foreground text-sm">{f.description}</p>
                 </div>
                 <div className="flex items-center gap-2">
