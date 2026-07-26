@@ -1,6 +1,6 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -12,15 +12,43 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getDb } from "@/db";
-import {
-  controlAssessments,
-  controlFrameworkMappings,
-  controls,
-  frameworkCodeEnum,
-  frameworks,
-} from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { computeFrameworkRollup, maturityLabel } from "@/server/framework/maturity";
+
+// Mirrors frameworkCodeEnum in apps/web/src/db/schema/_enums.ts.
+const FRAMEWORK_CODES = [
+  "ISO45001",
+  "HOTEL_OPS",
+  "MU_LEGAL",
+  "GRI403",
+  "IFRS_S1",
+  "IFRS_S2",
+  "SASB_HOTELS",
+  "UNGC",
+  "ILO_OSH",
+] as const;
+
+interface FrameworkRow extends CatalystRow {
+  code: string;
+  name: string;
+  description: string;
+}
+
+interface MappedControlQueryRow {
+  Controls: {
+    ROWID: string;
+    control_code: string;
+    title: string;
+    is_life_safety_critical: string;
+  };
+  FrameworkRequirements: { clause_reference: string | null };
+}
+
+interface AssessmentRow extends CatalystRow {
+  control_id: string;
+  dimension: string;
+  maturity_score: string;
+}
 
 export default async function FrameworkViewPage({
   params,
@@ -28,43 +56,48 @@ export default async function FrameworkViewPage({
   params: Promise<{ frameworkCode: string }>;
 }) {
   const { frameworkCode } = await params;
-  if (
-    !frameworkCodeEnum.enumValues.includes(
-      frameworkCode as (typeof frameworkCodeEnum.enumValues)[number],
-    )
-  ) {
+  if (!FRAMEWORK_CODES.includes(frameworkCode as (typeof FRAMEWORK_CODES)[number])) {
     notFound();
   }
 
-  const db = getDb();
-  const [framework] = await db
-    .select()
-    .from(frameworks)
-    .where(eq(frameworks.code, frameworkCode as (typeof frameworkCodeEnum.enumValues)[number]))
-    .limit(1);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const frameworkRows = (await datastore.table("Frameworks").getRows({
+    criteria: `Frameworks.code == '${frameworkCode}'`,
+    maxRows: 1,
+  })) as FrameworkRow[];
+  const framework = frameworkRows[0];
   if (!framework) {
     notFound();
   }
 
-  const mappedControls = await db
-    .select({
-      controlId: controls.id,
-      controlCode: controls.controlCode,
-      title: controls.title,
-      isLifeSafetyCritical: controls.isLifeSafetyCritical,
-      clauseReference: controlFrameworkMappings.clauseReference,
-    })
-    .from(controlFrameworkMappings)
-    .innerJoin(controls, eq(controls.id, controlFrameworkMappings.controlId))
-    .where(eq(controlFrameworkMappings.frameworkId, framework.id));
+  const mappedRows = (await catalystApp.zcql().executeZCQLQuery(
+    `select Controls.ROWID, Controls.control_code, Controls.title, Controls.is_life_safety_critical, FrameworkRequirements.clause_reference ` +
+      `from ControlFrameworkMappings ` +
+      `left join Controls on ControlFrameworkMappings.control_id = Controls.ROWID ` +
+      `left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID ` +
+      `where FrameworkRequirements.framework_id = '${framework.ROWID}'`,
+  )) as MappedControlQueryRow[];
 
-  const assessmentsByControl = new Map<string, (typeof controlAssessments.$inferSelect)[]>();
+  const mappedControls = mappedRows.map((r) => ({
+    controlId: r.Controls.ROWID,
+    controlCode: r.Controls.control_code,
+    title: r.Controls.title,
+    isLifeSafetyCritical: r.Controls.is_life_safety_critical === "true",
+    clauseReference: r.FrameworkRequirements.clause_reference,
+  }));
+
+  const assessmentsByControl = new Map<string, AssessmentRow[]>();
   if (mappedControls.length > 0) {
-    const allAssessments = await db.select().from(controlAssessments);
+    const controlIds = mappedControls.map((c) => c.controlId);
+    const allAssessments = (await datastore.table("ControlAssessments").getRows({
+      criteria: `ControlAssessments.control_id in (${controlIds.map((id) => `'${id}'`).join(", ")})`,
+    })) as AssessmentRow[];
     for (const a of allAssessments) {
-      const list = assessmentsByControl.get(a.controlId) ?? [];
+      const list = assessmentsByControl.get(a.control_id) ?? [];
       list.push(a);
-      assessmentsByControl.set(a.controlId, list);
+      assessmentsByControl.set(a.control_id, list);
     }
   }
 
@@ -72,7 +105,7 @@ export default async function FrameworkViewPage({
     const assessments = assessmentsByControl.get(c.controlId) ?? [];
     const latest = new Map<string, number>();
     for (const a of assessments) {
-      if (!latest.has(a.dimension)) latest.set(a.dimension, a.maturityScore);
+      if (!latest.has(a.dimension)) latest.set(a.dimension, Number(a.maturity_score));
     }
     return {
       isLifeSafetyCritical: c.isLifeSafetyCritical,

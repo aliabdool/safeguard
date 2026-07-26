@@ -27,7 +27,9 @@ deliverable) for the enforcement pattern once it lands.
 - `01-identity-and-access.json` — Users, Roles, Permissions, UserRoles, UserPermissions,
   UserPropertyAccess, UserDepartmentAccess, AuditTrail, RegistrationRequests
 - `02-master-data.json` — Properties, Departments, IncidentTypes, InjuryMechanisms,
-  RootCauseCategories, Frameworks, Controls, KPIDefinitions
+  RootCauseCategories, Frameworks, FrameworkRequirements, Controls, ControlFrameworkMappings,
+  LegalRequirementDetails (added during the Supabase-to-Catalyst migration — missing from the
+  original Phase 8 port), KPIDefinitions
 - `03-incidents.json` — Incidents, IncidentPersons, IncidentWitnesses, IncidentInvestigation,
   IncidentFiveWhys, IncidentRootCauses, InvestigationApprovals, IncidentAttachments,
   IncidentNotifications, IncidentOSHReportability, MedicalNotes (the three approvals/attachments/
@@ -40,8 +42,10 @@ deliverable) for the enforcement pattern once it lands.
   Supabase-to-Catalyst migration — missing from the original Phase 6 port)
 - `05-documents.json` — Documents, DocumentVersions, DocumentApprovals, DocumentEvidenceLinks
   (many-to-many — one approved document can support many controls across many frameworks)
-- `06-controls-frameworks.json` — ControlAssessments, CriticalGaps, FrameworkReadinessSnapshots
-  (Controls/Frameworks/FrameworkRequirements/ControlFrameworkMappings master data already lives in
+- `06-controls-frameworks.json` — ControlAssessments (department_id, period_label, and
+  is_critical_gap were added during the Supabase-to-Catalyst migration — missing from the original
+  Phase 8 port), CriticalGaps, FrameworkReadinessSnapshots (Controls/Frameworks/
+  FrameworkRequirements/ControlFrameworkMappings master data already lives in
   `02-master-data.json`)
 - `07-audits.json` — Audits, AuditFindings, AuditFindingCAPALinks
 - `08-kpi.json` — ExposureData (hours worked / occupied room nights feeding rate-based KPIs),

@@ -1,5 +1,5 @@
+import { headers } from "next/headers";
 import Link from "next/link";
-import { eq } from "drizzle-orm";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,25 +10,39 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getDb } from "@/db";
-import { controlFrameworkMappings, controls, frameworks } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+
+interface ControlRow extends CatalystRow {
+  control_code: string;
+  title: string;
+  category: string;
+  is_life_safety_critical: string;
+}
+
+interface MappingQueryRow {
+  ControlFrameworkMappings: { control_id: string };
+  Frameworks: { code: string };
+}
 
 export default async function ControlsPage() {
-  const db = getDb();
-  const allControls = await db.select().from(controls);
-  const mappings = await db
-    .select({
-      controlId: controlFrameworkMappings.controlId,
-      frameworkCode: frameworks.code,
-    })
-    .from(controlFrameworkMappings)
-    .innerJoin(frameworks, eq(frameworks.id, controlFrameworkMappings.frameworkId));
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const [allControls, mappings] = await Promise.all([
+    datastore.table("Controls").getRows({}) as Promise<ControlRow[]>,
+    catalystApp.zcql().executeZCQLQuery(
+      `select ControlFrameworkMappings.control_id, Frameworks.code from ControlFrameworkMappings ` +
+        `left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID ` +
+        `left join Frameworks on FrameworkRequirements.framework_id = Frameworks.ROWID`,
+    ) as Promise<MappingQueryRow[]>,
+  ]);
 
   const frameworksByControl = new Map<string, string[]>();
   for (const m of mappings) {
-    const list = frameworksByControl.get(m.controlId) ?? [];
-    list.push(m.frameworkCode);
-    frameworksByControl.set(m.controlId, list);
+    const controlId = m.ControlFrameworkMappings.control_id;
+    const list = frameworksByControl.get(controlId) ?? [];
+    list.push(m.Frameworks.code);
+    frameworksByControl.set(controlId, list);
   }
 
   return (
@@ -53,24 +67,24 @@ export default async function ControlsPage() {
         </TableHeader>
         <TableBody>
           {allControls.map((c) => (
-            <TableRow key={c.id}>
+            <TableRow key={c.ROWID}>
               <TableCell>
                 <Link
-                  href={`/framework/controls/${c.id}`}
+                  href={`/framework/controls/${c.ROWID}`}
                   className="font-medium underline underline-offset-4"
                 >
-                  {c.controlCode}
+                  {c.control_code}
                 </Link>
               </TableCell>
               <TableCell>{c.title}</TableCell>
               <TableCell>{c.category}</TableCell>
               <TableCell>
-                {c.isLifeSafetyCritical ? (
+                {c.is_life_safety_critical === "true" ? (
                   <Badge variant="destructive">Life-safety</Badge>
                 ) : null}
               </TableCell>
               <TableCell className="flex flex-wrap gap-1">
-                {(frameworksByControl.get(c.id) ?? []).map((code) => (
+                {(frameworksByControl.get(c.ROWID) ?? []).map((code) => (
                   <Badge key={code} variant="outline">
                     {code}
                   </Badge>

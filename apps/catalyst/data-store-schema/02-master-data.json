@@ -121,6 +121,19 @@
       ]
     },
     {
+      "table_name": "LegalRequirementDetails",
+      "scope": "Global",
+      "comment": "One row per legally-mandated control (1:1 with Controls) — added during the Supabase-to-Catalyst migration — missing from the original Phase 8 port. Ported verbatim from apps/web/src/db/schema/framework.ts's legalRequirementDetails table; read by the control-detail page's legal-citation panel.",
+      "columns": [
+        { "column_name": "control_id", "type": "lookup", "references": "Controls", "notNull": true, "unique": true },
+        { "column_name": "citation", "type": "text", "notNull": true },
+        { "column_name": "regulator", "type": "text", "nullable": true },
+        { "column_name": "penalty_description", "type": "text", "nullable": true },
+        { "column_name": "renewal_frequency", "type": "text", "nullable": true },
+        { "column_name": "content_status", "type": "text", "notNull": true, "default": "starter_set_needs_legal_review" }
+      ]
+    },
+    {
       "table_name": "KPIDefinitions",
       "scope": "Global",
       "columns": [

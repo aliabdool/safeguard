@@ -8,8 +8,11 @@
       "columns": [
         { "column_name": "control_id", "type": "lookup", "references": "Controls", "notNull": true },
         { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true, "comment": "The row-scoping column — every query MUST run through propertyScopeClause()." },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 8 port. Null means a property-wide assessment; a value scopes the assessment to one department, mirroring apps/web/src/db/schema/framework.ts's controlAssessments.departmentId." },
+        { "column_name": "period_label", "type": "text", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 8 port. Free-text reporting period, e.g. 'FY2026-Q2' — part of the (control, property, department, period, dimension) dedupe key used by the assessment-entry Server Action." },
         { "column_name": "dimension", "type": "text", "notNull": true, "comment": "policy | procedure | implementation | effectiveness" },
         { "column_name": "maturity_score", "type": "bigint", "notNull": true, "comment": "0-4. A score of <=1 on a life-safety-critical or legal control is a critical gap — see isCriticalGap() in maturity.ts." },
+        { "column_name": "is_critical_gap", "type": "boolean", "notNull": true, "default": false, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 8 port. Persisted result of isCriticalGap() at the time this row was written, mirroring apps/web/src/db/schema/framework.ts's controlAssessments.isCriticalGap column (kept distinct from the separate CriticalGaps open/resolved tracking table below, which the apps/web Framework module does not yet write to — see data-store-schema/README.md)." },
         { "column_name": "notes", "type": "text", "nullable": true, "comment": "E.g. 'Fire safety certificate expired 2026-06-01' — the human-readable reason behind a low score." },
         { "column_name": "assessed_by", "type": "lookup", "references": "Users", "notNull": true },
         { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" },

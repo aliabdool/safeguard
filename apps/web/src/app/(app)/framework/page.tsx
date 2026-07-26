@@ -1,12 +1,21 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import { frameworks } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+
+interface FrameworkRow extends CatalystRow {
+  code: string;
+  name: string;
+  description: string;
+}
 
 export default async function FrameworkLandingPage() {
-  const db = getDb();
-  const allFrameworks = await db.select().from(frameworks);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const allFrameworks = (await catalystApp
+    .datastore()
+    .table("Frameworks")
+    .getRows({})) as FrameworkRow[];
 
   return (
     <div className="flex flex-col gap-6">
@@ -38,7 +47,7 @@ export default async function FrameworkLandingPage() {
           </Card>
         </Link>
         {allFrameworks.map((f) => (
-          <Link key={f.id} href={`/framework/${f.code}`}>
+          <Link key={f.ROWID} href={`/framework/${f.code}`}>
             <Card className="hover:bg-accent/50 h-full">
               <CardHeader>
                 <CardTitle className="text-base">{f.name}</CardTitle>
