@@ -1,20 +1,37 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
 
 import { AssessmentForm } from "./assessment-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import {
-  controlAssessments,
-  controlFrameworkMappings,
-  controls,
-  departments,
-  frameworks,
-  legalRequirementDetails,
-  properties,
-} from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { listDepartments, listProperties } from "@/server/identity/catalyst-identity";
 import { computeControlMaturity, maturityLabel } from "@/server/framework/maturity";
+
+interface ControlRow extends CatalystRow {
+  control_code: string;
+  title: string;
+  category: string;
+  is_life_safety_critical: string;
+}
+
+interface MappingQueryRow {
+  Frameworks: { code: string; name: string };
+  FrameworkRequirements: { clause_reference: string | null };
+}
+
+interface LegalRow extends CatalystRow {
+  citation: string;
+  regulator: string;
+  content_status: string;
+}
+
+interface AssessmentRow extends CatalystRow {
+  property_id: string;
+  dimension: string;
+  maturity_score: string;
+  assessed_at: string;
+}
 
 export default async function ControlDetailPage({
   params,
@@ -22,50 +39,58 @@ export default async function ControlDetailPage({
   params: Promise<{ controlId: string }>;
 }) {
   const { controlId } = await params;
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
 
-  const [control] = await db
-    .select()
-    .from(controls)
-    .where(eq(controls.id, controlId))
-    .limit(1);
+  const controlRows = (await datastore.table("Controls").getRows({
+    criteria: `Controls.ROWID == '${controlId}'`,
+    maxRows: 1,
+  })) as ControlRow[];
+  const control = controlRows[0];
   if (!control) {
     notFound();
   }
 
-  const [mappings, legal, assessments, allProperties, allDepartments] = await Promise.all([
-    db
-      .select({
-        frameworkCode: frameworks.code,
-        frameworkName: frameworks.name,
-        clauseReference: controlFrameworkMappings.clauseReference,
-      })
-      .from(controlFrameworkMappings)
-      .innerJoin(frameworks, eq(frameworks.id, controlFrameworkMappings.frameworkId))
-      .where(eq(controlFrameworkMappings.controlId, controlId)),
-    db
-      .select()
-      .from(legalRequirementDetails)
-      .where(eq(legalRequirementDetails.controlId, controlId)),
-    db
-      .select()
-      .from(controlAssessments)
-      .where(eq(controlAssessments.controlId, controlId))
-      .orderBy(desc(controlAssessments.assessedAt)),
-    db.select({ id: properties.id, name: properties.name }).from(properties),
-    db.select({ id: departments.id, name: departments.name }).from(departments),
+  const [mappingRows, legal, assessmentRows, allProperties, allDepartments] = await Promise.all([
+    catalystApp.zcql().executeZCQLQuery(
+      `select Frameworks.code, Frameworks.name, FrameworkRequirements.clause_reference ` +
+        `from ControlFrameworkMappings ` +
+        `left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID ` +
+        `left join Frameworks on FrameworkRequirements.framework_id = Frameworks.ROWID ` +
+        `where ControlFrameworkMappings.control_id = '${controlId}'`,
+    ) as Promise<MappingQueryRow[]>,
+    datastore.table("LegalRequirementDetails").getRows({
+      criteria: `LegalRequirementDetails.control_id == '${controlId}'`,
+      maxRows: 1,
+    }) as Promise<LegalRow[]>,
+    datastore.table("ControlAssessments").getRows({
+      criteria: `ControlAssessments.control_id == '${controlId}'`,
+    }) as Promise<AssessmentRow[]>,
+    listProperties(catalystApp),
+    listDepartments(catalystApp),
   ]);
 
+  const mappings = mappingRows.map((m) => ({
+    frameworkCode: m.Frameworks.code,
+    frameworkName: m.Frameworks.name,
+    clauseReference: m.FrameworkRequirements.clause_reference,
+  }));
   const isLegal = mappings.some((m) => m.frameworkCode === "MU_LEGAL");
 
-  // Latest score per (property, dimension) for a simple "current maturity" summary per property.
+  // "Latest" per (property, dimension) requires assessed_at descending order — getRows makes no
+  // ordering guarantee, so sort client-side before taking the first occurrence per dimension, the
+  // same convention used elsewhere in the migration (e.g. api-controls's getLatestDimensionScores).
+  const assessments = [...assessmentRows].sort((a, b) =>
+    a.assessed_at < b.assessed_at ? 1 : a.assessed_at > b.assessed_at ? -1 : 0,
+  );
+
   const latestByPropertyDimension = new Map<string, Map<string, number>>();
   for (const a of assessments) {
-    const propMap = latestByPropertyDimension.get(a.propertyId) ?? new Map<string, number>();
+    const propMap = latestByPropertyDimension.get(a.property_id) ?? new Map<string, number>();
     if (!propMap.has(a.dimension)) {
-      propMap.set(a.dimension, a.maturityScore);
+      propMap.set(a.dimension, Number(a.maturity_score));
     }
-    latestByPropertyDimension.set(a.propertyId, propMap);
+    latestByPropertyDimension.set(a.property_id, propMap);
   }
   const propertyName = new Map(allProperties.map((p) => [p.id, p.name]));
 
@@ -74,8 +99,8 @@ export default async function ControlDetailPage({
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{control.title}</h1>
         <p className="text-muted-foreground text-sm">
-          {control.controlCode} · {control.category}
-          {control.isLifeSafetyCritical ? (
+          {control.control_code} · {control.category}
+          {control.is_life_safety_critical === "true" ? (
             <>
               {" "}
               · <Badge variant="destructive">Life-safety critical</Badge>
@@ -98,7 +123,7 @@ export default async function ControlDetailPage({
           {legal[0] ? (
             <p className="text-muted-foreground">
               Legal citation: {legal[0].citation} ({legal[0].regulator}) —{" "}
-              <Badge variant="warning">{legal[0].contentStatus}</Badge>
+              <Badge variant="warning">{legal[0].content_status}</Badge>
             </p>
           ) : null}
         </CardContent>
@@ -146,7 +171,7 @@ export default async function ControlDetailPage({
             controlId={controlId}
             properties={allProperties}
             departments={allDepartments}
-            isLifeSafetyCritical={control.isLifeSafetyCritical}
+            isLifeSafetyCritical={control.is_life_safety_critical === "true"}
             isLegal={isLegal}
           />
         </CardContent>

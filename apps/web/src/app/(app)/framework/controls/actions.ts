@@ -1,20 +1,19 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
-import { getDb } from "@/db";
-import { controlAssessments } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { writeAuditLog } from "@/server/audit-log";
 import { isCriticalGap } from "@/server/framework/maturity";
 import { hasPropertyAccess, requireRole } from "@/server/permissions";
 
 const schema = z.object({
-  controlId: z.string().uuid(),
-  propertyId: z.string().uuid(),
-  departmentId: z.string().uuid().optional().or(z.literal("")),
+  controlId: z.string(),
+  propertyId: z.string(),
+  departmentId: z.string().optional().or(z.literal("")),
   periodLabel: z.string().min(1, "Period label is required (e.g. FY2026-Q2)."),
   dimension: z.enum(["policy", "procedure", "implementation", "effectiveness"]),
   maturityScore: z.coerce.number().int().min(0).max(4),
@@ -60,51 +59,47 @@ export async function createControlAssessmentAction(
     scores: { [data.dimension]: data.maturityScore },
   });
 
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
   const departmentId = data.departmentId || null;
 
-  // Postgres treats NULL as distinct under a unique index, so a plain onConflictDoUpdate can't
-  // dedupe property-wide (departmentId === null) re-assessments correctly — select-then-write
-  // instead, same tradeoff as the incident-number allocator (acceptable race window for v1
-  // assessment-entry volume; the unique index on the table is still a correctness backstop for
-  // the departmentId-is-not-null case).
-  const [existing] = await db
-    .select({ id: controlAssessments.id })
-    .from(controlAssessments)
-    .where(
-      and(
-        eq(controlAssessments.controlId, data.controlId),
-        eq(controlAssessments.propertyId, data.propertyId),
-        departmentId
-          ? eq(controlAssessments.departmentId, departmentId)
-          : isNull(controlAssessments.departmentId),
-        eq(controlAssessments.periodLabel, data.periodLabel),
-        eq(controlAssessments.dimension, data.dimension),
-      ),
-    )
-    .limit(1);
+  // Data Store has no upsert/onConflictDoUpdate, and (like Postgres treating NULL as distinct
+  // under a unique index) a null department_id can't be relied on to dedupe via a criteria filter
+  // alone either — select-then-write instead, same tradeoff as the incident-number allocator
+  // (acceptable race window for v1 assessment-entry volume).
+  const departmentClause = departmentId
+    ? `ControlAssessments.department_id == '${departmentId}'`
+    : `ControlAssessments.department_id is null`;
+  const existingRows = (await datastore.table("ControlAssessments").getRows({
+    criteria:
+      `ControlAssessments.control_id == '${data.controlId}' && ` +
+      `ControlAssessments.property_id == '${data.propertyId}' && ` +
+      `${departmentClause} && ` +
+      `ControlAssessments.period_label == '${data.periodLabel}' && ` +
+      `ControlAssessments.dimension == '${data.dimension}'`,
+    maxRows: 1,
+  })) as CatalystRow[];
+  const existing = existingRows[0];
 
   if (existing) {
-    await db
-      .update(controlAssessments)
-      .set({
-        maturityScore: data.maturityScore,
-        isCriticalGap: criticalGap,
-        assessedBy: ctx.userId,
-        assessedAt: new Date(),
-        notes: data.notes ?? null,
-      })
-      .where(eq(controlAssessments.id, existing.id));
+    await datastore.table("ControlAssessments").updateRow({
+      ROWID: existing.ROWID,
+      maturity_score: data.maturityScore,
+      is_critical_gap: criticalGap,
+      assessed_by: ctx.userId,
+      assessed_at: new Date().toISOString(),
+      notes: data.notes ?? null,
+    });
   } else {
-    await db.insert(controlAssessments).values({
-      controlId: data.controlId,
-      propertyId: data.propertyId,
-      departmentId,
-      periodLabel: data.periodLabel,
+    await datastore.table("ControlAssessments").insertRow({
+      control_id: data.controlId,
+      property_id: data.propertyId,
+      department_id: departmentId,
+      period_label: data.periodLabel,
       dimension: data.dimension,
-      maturityScore: data.maturityScore,
-      isCriticalGap: criticalGap,
-      assessedBy: ctx.userId,
+      maturity_score: data.maturityScore,
+      is_critical_gap: criticalGap,
+      assessed_by: ctx.userId,
       notes: data.notes ?? null,
     });
   }
@@ -112,7 +107,7 @@ export async function createControlAssessmentAction(
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "score_changed",
-    entityType: "control_assessments",
+    entityType: "ControlAssessments",
     entityId: data.controlId,
     propertyId: data.propertyId,
     departmentId: data.departmentId || null,
