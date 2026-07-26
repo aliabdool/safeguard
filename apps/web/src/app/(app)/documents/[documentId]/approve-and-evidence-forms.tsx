@@ -80,7 +80,7 @@ export function EvidenceLinkForm({
             ))}
           </SelectContent>
         </Select>
-        <Input name="linkedEntityId" placeholder="Entity ID (UUID)" required />
+        <Input name="linkedEntityId" placeholder="Entity ID" required />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Select name="evidenceLevel" required>

@@ -1,25 +1,15 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
-import { getDb } from "@/db";
-import {
-  documentApprovalHistory,
-  documentDepartmentApplicability,
-  documentPropertyApplicability,
-  documentVersions,
-  documents,
-  evidenceLinks,
-  scheduledReminders,
-} from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextDocumentNumber } from "@/server/documents/number";
 import { requireActiveUser, requireRole } from "@/server/permissions";
-import { confirmUpload, createUploadUrl, FileValidationError } from "@/server/storage";
 
 const DOCUMENT_ROLES = [
   "PROPERTY_HS_OFFICER",
@@ -34,8 +24,8 @@ const createSchema = z.object({
   category: z.string().min(1, "Category is required."),
   confidentialityLevel: z.enum(["public", "internal", "confidential", "restricted"]),
   retentionPeriodMonths: z.coerce.number().int().min(0).optional(),
-  propertyIds: z.array(z.string().uuid()),
-  departmentIds: z.array(z.string().uuid()),
+  propertyIds: z.array(z.string()),
+  departmentIds: z.array(z.string()),
 });
 
 export async function createDocumentAction(
@@ -56,39 +46,46 @@ export async function createDocumentAction(
   }
   const data = parsed.data;
 
-  const db = getDb();
-  const documentNumber = await nextDocumentNumber();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+  const documentNumber = await nextDocumentNumber(catalystApp);
 
-  const [created] = await db
-    .insert(documents)
-    .values({
-      documentNumber,
-      title: data.title,
-      category: data.category,
-      ownerId: ctx.userId,
-      confidentialityLevel: data.confidentialityLevel,
-      retentionPeriodMonths: data.retentionPeriodMonths ?? null,
-      status: "draft",
-    })
-    .returning({ id: documents.id });
-
-  const documentId = created!.id;
+  const created = await datastore.table("Documents").insertRow({
+    document_number: documentNumber,
+    title: data.title,
+    category: data.category,
+    owner_id: ctx.userId,
+    confidentiality_level: data.confidentialityLevel,
+    retention_period_months: data.retentionPeriodMonths ?? null,
+    status: "draft",
+  });
+  const documentId = String(created.ROWID);
 
   if (data.propertyIds.length > 0) {
-    await db
-      .insert(documentPropertyApplicability)
-      .values(data.propertyIds.map((propertyId) => ({ documentId, propertyId })));
+    await Promise.all(
+      data.propertyIds.map((propertyId) =>
+        datastore.table("DocumentPropertyApplicability").insertRow({
+          document_id: documentId,
+          property_id: propertyId,
+        }),
+      ),
+    );
   }
   if (data.departmentIds.length > 0) {
-    await db
-      .insert(documentDepartmentApplicability)
-      .values(data.departmentIds.map((departmentId) => ({ documentId, departmentId })));
+    await Promise.all(
+      data.departmentIds.map((departmentId) =>
+        datastore.table("DocumentDepartmentApplicability").insertRow({
+          document_id: documentId,
+          department_id: departmentId,
+        }),
+      ),
+    );
   }
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "record_created",
-    entityType: "documents",
+    entityType: "Documents",
     entityId: documentId,
     newValue: { title: data.title, status: "draft" },
   });
@@ -97,112 +94,60 @@ export async function createDocumentAction(
   redirect(`/documents/${documentId}`);
 }
 
-export async function requestDocumentVersionUploadAction(input: {
+/**
+ * TODO(Phase D): file upload still targeted Supabase Storage and a Postgres files.id — that ID
+ * can't be stored in Catalyst's DocumentVersions.file_id (which references Catalyst's own File
+ * Store once that migrates), and the Postgres files/document_versions tables' relationships no
+ * longer resolve now that documents are created in Catalyst, not Postgres. Wiring this up
+ * correctly requires the storage migration to Catalyst File Store first; until then this action
+ * intentionally errors rather than silently writing a dangling/wrong reference. Signature kept
+ * identical to the pre-migration version so version-upload.tsx still typechecks unchanged. See
+ * requestIncidentAttachmentUploadAction/confirmIncidentAttachmentAction in
+ * app/(app)/incidents/actions.ts for the precedent this mirrors.
+ */
+export async function requestDocumentVersionUploadAction(_input: {
   filename: string;
   mimeType: string;
   sizeBytes: number;
-}) {
-  const ctx = await requireActiveUser();
-  try {
-    return await createUploadUrl({
-      bucket: "controlled-documents",
-      filename: input.filename,
-      mimeType: input.mimeType,
-      sizeBytes: input.sizeBytes,
-      uploadedBy: ctx.userId,
-    });
-  } catch (err) {
-    if (err instanceof FileValidationError) {
-      throw new Error(err.message);
-    }
-    throw err;
-  }
+}): Promise<{ fileId: string; storagePath: string; token: string }> {
+  throw new Error(
+    "Document upload is temporarily unavailable during the migration to Zoho Catalyst — file storage has not moved over yet.",
+  );
 }
 
-const confirmVersionSchema = z.object({
-  documentId: z.string().uuid(),
-  fileId: z.string().uuid(),
-  effectiveDate: z.string().optional(),
-  reviewDate: z.string().optional(),
-  expiryDate: z.string().optional(),
-  changeSummary: z.string().optional(),
-});
-
 /**
- * Creates a NEW version row — never edits an existing (especially an already-approved) one, so
- * whatever an audit/assessment referenced at the time stays intact. See docs/database-model.md §7.
+ * TODO(Phase D): see requestDocumentVersionUploadAction above — creating a version record only
+ * makes sense once there's a real, confirmed file behind it. Also note: the pre-migration version
+ * of this action scheduled a `document_review_due` row in Postgres' scheduledReminders table when
+ * a review date was set. That table (and the cron job that processes it,
+ * server/cron/process-reminders.ts) has not moved to Catalyst yet — out of this module's scope —
+ * so review-date reminder scheduling is deferred along with the rest of this action until both
+ * file storage and notifications have migrated.
  */
-export async function createDocumentVersionAction(input: {
+export async function createDocumentVersionAction(_input: {
   documentId: string;
   fileId: string;
   effectiveDate?: string;
   reviewDate?: string;
   expiryDate?: string;
   changeSummary?: string;
-}) {
-  const ctx = await requireActiveUser();
-  const parsed = confirmVersionSchema.parse(input);
-
-  await confirmUpload(parsed.fileId);
-
-  const db = getDb();
-  const existingVersions = await db
-    .select({ versionNo: documentVersions.versionNo })
-    .from(documentVersions)
-    .where(eq(documentVersions.documentId, parsed.documentId));
-  const nextVersionNo = existingVersions.reduce((max, v) => Math.max(max, v.versionNo), 0) + 1;
-
-  const [version] = await db
-    .insert(documentVersions)
-    .values({
-      documentId: parsed.documentId,
-      versionNo: nextVersionNo,
-      fileId: parsed.fileId,
-      effectiveDate: parsed.effectiveDate || null,
-      reviewDate: parsed.reviewDate || null,
-      expiryDate: parsed.expiryDate || null,
-      uploadedBy: ctx.userId,
-      status: "under_review",
-      changeSummary: parsed.changeSummary ?? null,
-    })
-    .returning({ id: documentVersions.id });
-
-  await db
-    .update(documents)
-    .set({ status: "under_review", updatedAt: new Date() })
-    .where(eq(documents.id, parsed.documentId));
-
-  await db.insert(documentApprovalHistory).values({
-    documentVersionId: version!.id,
-    actorId: ctx.userId,
-    action: "submitted",
-  });
-
-  await writeAuditLog({
-    actorId: ctx.userId,
-    eventType: "document_uploaded",
-    entityType: "document_versions",
-    entityId: version!.id,
-  });
-
-  if (parsed.reviewDate) {
-    await db.insert(scheduledReminders).values({
-      relatedEntityType: "document_versions",
-      relatedEntityId: version!.id,
-      remindAt: new Date(parsed.reviewDate),
-      reminderType: "document_review_due",
-    });
-  }
-
-  revalidatePath(`/documents/${parsed.documentId}`);
-  return version!.id;
+}): Promise<string> {
+  throw new Error(
+    "Document upload is temporarily unavailable during the migration to Zoho Catalyst — file storage has not moved over yet.",
+  );
 }
 
 const approveSchema = z.object({
-  documentId: z.string().uuid(),
-  versionId: z.string().uuid(),
+  documentId: z.string(),
+  versionId: z.string(),
   comment: z.string().optional(),
 });
+
+interface DocumentVersionRow extends CatalystRow {
+  document_id: string;
+  uploaded_by: string;
+  status: string;
+}
 
 /** Approver must be distinct from the uploader — same "not the same person" discipline as CAPA. */
 export async function approveDocumentVersionAction(
@@ -219,35 +164,40 @@ export async function approveDocumentVersionAction(
     return { error: "Invalid approval." };
   }
 
-  const db = getDb();
-  const [version] = await db
-    .select()
-    .from(documentVersions)
-    .where(eq(documentVersions.id, parsed.data.versionId))
-    .limit(1);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const versionRows = (await datastore.table("DocumentVersions").getRows({
+    criteria: `DocumentVersions.ROWID == '${parsed.data.versionId}'`,
+    maxRows: 1,
+  })) as DocumentVersionRow[];
+  const version = versionRows[0];
   if (!version) {
     return { error: "Unknown document version." };
   }
-  if (version.uploadedBy === ctx.userId) {
+  if (version.uploaded_by === ctx.userId) {
     return { error: "The uploader cannot also approve their own document version." };
   }
 
-  const now = new Date();
-  await db
-    .update(documentVersions)
-    .set({ status: "approved", approverId: ctx.userId, approvedAt: now })
-    .where(eq(documentVersions.id, parsed.data.versionId));
+  await datastore.table("DocumentVersions").updateRow({
+    ROWID: parsed.data.versionId,
+    status: "approved",
+  });
 
-  await db
-    .update(documents)
-    .set({ status: "approved", currentVersionId: parsed.data.versionId, updatedAt: now })
-    .where(eq(documents.id, parsed.data.documentId));
+  await datastore.table("Documents").updateRow({
+    ROWID: parsed.data.documentId,
+    status: "approved",
+    current_version_id: parsed.data.versionId,
+    updated_at: new Date().toISOString(),
+  });
 
-  await db.insert(documentApprovalHistory).values({
-    documentVersionId: parsed.data.versionId,
-    actorId: ctx.userId,
-    action: "approved",
-    comment: parsed.data.comment ?? null,
+  // The approval DECISION as its own record (DocumentApprovals) — mirrors CAPAVerification /
+  // IncidentInvestigation's approvals tables, independent of the status column above.
+  await datastore.table("DocumentApprovals").insertRow({
+    document_version_id: parsed.data.versionId,
+    approver_id: ctx.userId,
+    outcome: "approved",
+    notes: parsed.data.comment ?? null,
   });
 
   await writeAuditLog({
@@ -262,8 +212,8 @@ export async function approveDocumentVersionAction(
 }
 
 const evidenceLinkSchema = z.object({
-  documentVersionId: z.string().uuid(),
-  documentId: z.string().uuid(),
+  documentVersionId: z.string(),
+  documentId: z.string(),
   linkedEntityType: z.enum([
     "control_assessment",
     "kpi_definition",
@@ -272,7 +222,7 @@ const evidenceLinkSchema = z.object({
     "capa_action",
     "disclosure",
   ]),
-  linkedEntityId: z.string().uuid(),
+  linkedEntityId: z.string(),
   evidenceLevel: z.enum(["policy", "procedure", "implementation", "effectiveness"]),
   purpose: z.string().optional(),
   pageOrSection: z.string().optional(),
@@ -298,15 +248,16 @@ export async function addEvidenceLinkAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid evidence link." };
   }
 
-  const db = getDb();
-  await db.insert(evidenceLinks).values({
-    documentVersionId: parsed.data.documentVersionId,
-    linkedEntityType: parsed.data.linkedEntityType,
-    linkedEntityId: parsed.data.linkedEntityId,
-    evidenceLevel: parsed.data.evidenceLevel,
+  const catalystApp = catalystAppFromHeaders(await headers());
+  await catalystApp.datastore().table("DocumentEvidenceLinks").insertRow({
+    document_version_id: parsed.data.documentVersionId,
+    linked_entity_type: parsed.data.linkedEntityType,
+    linked_entity_id: parsed.data.linkedEntityId,
+    evidence_level: parsed.data.evidenceLevel,
     purpose: parsed.data.purpose ?? null,
-    pageOrSection: parsed.data.pageOrSection ?? null,
-    reportingPeriod: parsed.data.reportingPeriod ?? null,
+    page_or_section: parsed.data.pageOrSection ?? null,
+    reporting_period: parsed.data.reportingPeriod ?? null,
+    linked_by: ctx.userId,
   });
 
   await writeAuditLog({

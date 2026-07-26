@@ -35,8 +35,12 @@ deliverable) for the enforcement pattern once it lands.
   during the Supabase-to-Catalyst migration — missing from the original Phase 5 port)
 - `04-capa.json` — CAPA, CAPAProgressNotes, CAPAVerification (owner_id/verifier_id must always
   differ — enforced in `functions/shared/pure/capa-workflow.ts`)
-- `05-documents.json` — Documents, DocumentVersions, DocumentApprovals, DocumentEvidenceLinks
-  (many-to-many — one approved document can support many controls across many frameworks)
+- `05-documents.json` — Documents, DocumentPropertyApplicability, DocumentDepartmentApplicability,
+  DocumentVersions, DocumentApprovals, DocumentEvidenceLinks (many-to-many — one approved document
+  can support many controls across many frameworks; the applicability tables and several
+  Documents/DocumentVersions/DocumentEvidenceLinks columns were added during the Phase C documents
+  module migration — present in apps/web's Postgres schema but missing from the original Phase 7
+  port)
 - `06-controls-frameworks.json` — ControlAssessments, CriticalGaps, FrameworkReadinessSnapshots
   (Controls/Frameworks/FrameworkRequirements/ControlFrameworkMappings master data already lives in
   `02-master-data.json`)
