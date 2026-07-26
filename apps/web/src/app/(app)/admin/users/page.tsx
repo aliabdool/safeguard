@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,53 +9,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getDb } from "@/db";
-import { profiles, roles, userRoles } from "@/db/schema";
-import { createSupabaseServiceRoleClient } from "@/server/auth/service-role";
+import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { listUsers } from "@/server/identity/catalyst-identity";
 
 import { UserRowActions } from "./user-row-actions";
 
 export default async function UsersPage() {
-  const db = getDb();
-
-  const [profileRows, roleAssignments] = await Promise.all([
-    db
-      .select({
-        id: profiles.id,
-        fullName: profiles.fullName,
-        status: profiles.status,
-        suspensionReason: profiles.suspensionReason,
-      })
-      .from(profiles),
-    db
-      .select({ userId: userRoles.userId, roleName: roles.name })
-      .from(userRoles)
-      .innerJoin(roles, eq(roles.id, userRoles.roleId)),
-  ]);
-
-  const rolesByUser = new Map<string, string[]>();
-  for (const row of roleAssignments) {
-    const list = rolesByUser.get(row.userId) ?? [];
-    list.push(row.roleName);
-    rolesByUser.set(row.userId, list);
-  }
-
-  let emailsByUserId = new Map<string, string>();
-  try {
-    const admin = createSupabaseServiceRoleClient();
-    const { data } = await admin.auth.admin.listUsers({ perPage: 1000 });
-    emailsByUserId = new Map(data.users.map((u) => [u.id, u.email ?? "(no email)"]));
-  } catch {
-    // Degrade gracefully if service-role secret isn't configured in this environment.
-  }
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const users = await listUsers(catalystApp);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
         <p className="text-muted-foreground text-sm">
-          Suspend, reactivate, or revoke sessions. Role/property/department changes happen from
-          the registration approval flow or directly against user access records.
+          Suspend or reactivate accounts. Role/property/department changes happen from the
+          registration approval flow or directly against user access records.
         </p>
       </div>
 
@@ -70,10 +39,10 @@ export default async function UsersPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {profileRows.map((user) => (
+          {users.map((user) => (
             <TableRow key={user.id}>
               <TableCell>{user.fullName}</TableCell>
-              <TableCell>{emailsByUserId.get(user.id) ?? "—"}</TableCell>
+              <TableCell>{user.email}</TableCell>
               <TableCell>
                 <Badge
                   variant={
@@ -90,7 +59,7 @@ export default async function UsersPage() {
                   <p className="text-muted-foreground mt-1 text-xs">{user.suspensionReason}</p>
                 ) : null}
               </TableCell>
-              <TableCell>{rolesByUser.get(user.id)?.join(", ") || "—"}</TableCell>
+              <TableCell>{user.roleNames.join(", ") || "—"}</TableCell>
               <TableCell className="text-right">
                 <UserRowActions userId={user.id} status={user.status} />
               </TableCell>

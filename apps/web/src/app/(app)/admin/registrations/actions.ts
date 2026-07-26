@@ -1,29 +1,21 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { getDb } from "@/db";
-import {
-  profiles,
-  registrationRequests,
-  userDepartmentAccess,
-  userMedicalPermission,
-  userPropertyAccess,
-  userRoles,
-} from "@/db/schema";
+import { catalystAppFromHeaders } from "@/lib/catalyst/app";
 import { requireRole } from "@/server/permissions";
 import { writeAuditLog } from "@/server/audit-log";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 
 const approveSchema = z.object({
-  userId: z.string().uuid(),
-  registrationRequestId: z.string().uuid(),
-  roleId: z.string().uuid(),
-  propertyIds: z.array(z.string().uuid()).min(1, "Select at least one property."),
-  departmentIds: z.array(z.string().uuid()),
+  userId: z.string(),
+  registrationRequestId: z.string(),
+  roleId: z.string(),
+  propertyIds: z.array(z.string()).min(1, "Select at least one property."),
+  departmentIds: z.array(z.string()),
   grantMedicalPermission: z.boolean(),
   medicalPermissionReason: z.string().optional(),
 });
@@ -43,74 +35,78 @@ export async function approveRegistrationAction(
     grantMedicalPermission: formData.get("grantMedicalPermission") === "on",
     medicalPermissionReason: formData.get("medicalPermissionReason")?.toString(),
   });
-
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid approval details." };
   }
   const data = parsed.data;
-
   if (data.grantMedicalPermission && !data.medicalPermissionReason) {
     return { error: "A reason is required to grant medical-data access." };
   }
 
-  const db = getDb();
-  const now = new Date();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+  const nowIso = new Date().toISOString();
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(profiles)
-      .set({ status: "active", approvedBy: admin.userId, approvedAt: now, updatedAt: now })
-      .where(eq(profiles.id, data.userId));
-
-    await tx
-      .update(registrationRequests)
-      .set({ status: "approved", reviewedBy: admin.userId, reviewedAt: now })
-      .where(eq(registrationRequests.id, data.registrationRequestId));
-
-    await tx
-      .insert(userRoles)
-      .values({ userId: data.userId, roleId: data.roleId, grantedBy: admin.userId })
-      .onConflictDoNothing();
-
-    for (const propertyId of data.propertyIds) {
-      await tx
-        .insert(userPropertyAccess)
-        .values({ userId: data.userId, propertyId, grantedBy: admin.userId })
-        .onConflictDoNothing();
-
-      for (const departmentId of data.departmentIds) {
-        await tx
-          .insert(userDepartmentAccess)
-          .values({ userId: data.userId, propertyId, departmentId, grantedBy: admin.userId })
-          .onConflictDoNothing();
-      }
-    }
-
-    if (data.grantMedicalPermission) {
-      await tx
-        .insert(userMedicalPermission)
-        .values({
-          userId: data.userId,
-          grantedBy: admin.userId,
-          reason: data.medicalPermissionReason ?? "",
-        })
-        .onConflictDoUpdate({
-          target: userMedicalPermission.userId,
-          set: {
-            grantedBy: admin.userId,
-            grantedAt: now,
-            reason: data.medicalPermissionReason ?? "",
-            revokedBy: null,
-            revokedAt: null,
-          },
-        });
-    }
+  // Data Store has no multi-table transaction primitive, so these writes are sequenced, not
+  // atomic (see apps/catalyst/data-store-schema/README.md) — a partial failure needs manual
+  // cleanup, the same tradeoff every other Catalyst Function already accepts. Data Store also has
+  // no unique-constraint/upsert equivalent to Postgres's onConflictDoNothing, so a double submit
+  // of this form can insert a duplicate UserRoles/UserPropertyAccess row — acceptable for v1, flag
+  // for hardening alongside the rest of Phase C/D.
+  await datastore.table("Users").updateRow({
+    ROWID: data.userId,
+    status: "active",
+    approved_by: admin.userId,
+    approved_at: nowIso,
+    updated_at: nowIso,
   });
+
+  await datastore.table("RegistrationRequests").updateRow({
+    ROWID: data.registrationRequestId,
+    status: "approved",
+    reviewed_by: admin.userId,
+    reviewed_at: nowIso,
+  });
+
+  await datastore.table("UserRoles").insertRow({
+    user_id: data.userId,
+    role_id: data.roleId,
+    granted_by: admin.userId,
+  });
+
+  for (const propertyId of data.propertyIds) {
+    await datastore.table("UserPropertyAccess").insertRow({
+      user_id: data.userId,
+      property_id: propertyId,
+      granted_by: admin.userId,
+    });
+
+    for (const departmentId of data.departmentIds) {
+      await datastore.table("UserDepartmentAccess").insertRow({
+        user_id: data.userId,
+        property_id: propertyId,
+        department_id: departmentId,
+        granted_by: admin.userId,
+      });
+    }
+  }
+
+  if (data.grantMedicalPermission) {
+    // Catalyst's ported schema has three granular medical-permission codes (view/edit/export);
+    // this single checkbox grants view only — matching the single boolean this form always had.
+    // Granting edit/export needs a separate, more deliberate action, not yet exposed in this UI.
+    await datastore.table("UserPermissions").insertRow({
+      user_id: data.userId,
+      permission_code: "view_medical_notes",
+      granted_by: admin.userId,
+      reason: data.medicalPermissionReason ?? "",
+    });
+  }
 
   await writeAuditLog({
     actorId: admin.userId,
     eventType: "registration_approved",
-    entityType: "profiles",
+    entityType: "Users",
     entityId: data.userId,
     newValue: {
       roleId: data.roleId,
@@ -126,8 +122,8 @@ export async function approveRegistrationAction(
 }
 
 const rejectSchema = z.object({
-  userId: z.string().uuid(),
-  registrationRequestId: z.string().uuid(),
+  userId: z.string(),
+  registrationRequestId: z.string(),
   reason: z.string().min(1, "A rejection reason is required."),
 });
 
@@ -147,28 +143,28 @@ export async function rejectRegistrationAction(
   }
   const data = parsed.data;
 
-  const db = getDb();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(profiles)
-      .set({ status: "rejected", updatedAt: new Date() })
-      .where(eq(profiles.id, data.userId));
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+  const nowIso = new Date().toISOString();
 
-    await tx
-      .update(registrationRequests)
-      .set({
-        status: "rejected",
-        reviewedBy: admin.userId,
-        reviewedAt: new Date(),
-        rejectionReason: data.reason,
-      })
-      .where(eq(registrationRequests.id, data.registrationRequestId));
+  await datastore.table("Users").updateRow({
+    ROWID: data.userId,
+    status: "rejected",
+    updated_at: nowIso,
+  });
+
+  await datastore.table("RegistrationRequests").updateRow({
+    ROWID: data.registrationRequestId,
+    status: "rejected",
+    reviewed_by: admin.userId,
+    reviewed_at: nowIso,
+    rejection_reason: data.reason,
   });
 
   await writeAuditLog({
     actorId: admin.userId,
     eventType: "registration_rejected",
-    entityType: "profiles",
+    entityType: "Users",
     entityId: data.userId,
     reason: data.reason,
   });

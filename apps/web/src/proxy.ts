@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 
-import { updateSupabaseSession } from "@/lib/supabase/middleware";
+import { updateCatalystSession } from "@/lib/catalyst/middleware";
 
 /**
  * Next.js 16 renamed `middleware.ts` to `proxy.ts` (the `middleware` filename/export are
@@ -8,7 +8,7 @@ import { updateSupabaseSession } from "@/lib/supabase/middleware";
  * Runs on the `nodejs` runtime (proxy no longer supports `edge`).
  */
 export function proxy(request: NextRequest) {
-  return updateSupabaseSession(request);
+  return updateCatalystSession(request);
 }
 
 export const config = {

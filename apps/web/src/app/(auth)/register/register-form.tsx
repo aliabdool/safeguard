@@ -25,8 +25,9 @@ export function RegisterForm() {
       <CardHeader>
         <CardTitle>Request access</CardTitle>
         <CardDescription>
-          Your account starts pending approval. An administrator will assign your role,
-          properties and departments before you can see any data.
+          Your account starts pending approval. You&apos;ll receive an email to set your
+          password once it&apos;s created. An administrator will assign your role, properties
+          and departments before you can see any data.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -38,17 +39,6 @@ export function RegisterForm() {
           <div className="grid gap-2">
             <Label htmlFor="email">Work email</Label>
             <Input id="email" name="email" type="email" autoComplete="email" required />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              minLength={8}
-              required
-            />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="justification">

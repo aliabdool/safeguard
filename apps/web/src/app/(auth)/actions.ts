@@ -4,9 +4,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { getDb } from "@/db";
-import { registrationRequests } from "@/db/schema";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { catalystAdminApp, catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { getCatalystLogoutUrl } from "@/lib/catalyst/env";
 import { writeAuditLog } from "@/server/audit-log";
 import { isRateLimited } from "@/server/security/rate-limit";
 
@@ -18,91 +17,32 @@ async function requestMeta() {
   };
 }
 
-const signInSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
-
 export interface ActionResult {
   error?: string;
 }
 
-export async function signInAction(
-  _prevState: ActionResult,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = signInSchema.safeParse({
-    email: formData.get("email"),
-    password: formData.get("password"),
-  });
-  if (!parsed.success) {
-    return { error: "Enter a valid email and password." };
-  }
-
-  const { ipAddress, userAgent } = await requestMeta();
-
-  if (
-    await isRateLimited({
-      ipAddress,
-      eventType: "failed_login",
-      maxAttempts: 10,
-      windowMinutes: 15,
-    })
-  ) {
-    await writeAuditLog({
-      actorId: null,
-      eventType: "failed_login",
-      entityType: "auth",
-      reason: "rate_limited",
-      ipAddress,
-      userAgent,
-    });
-    return { error: "Too many failed attempts. Try again in a few minutes." };
-  }
-
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
-
-  if (error || !data.user) {
-    await writeAuditLog({
-      actorId: null,
-      eventType: "failed_login",
-      entityType: "auth",
-      reason: error?.message ?? "unknown",
-      ipAddress,
-      userAgent,
-    });
-    return { error: "Invalid email or password." };
-  }
-
-  await writeAuditLog({
-    actorId: data.user.id,
-    eventType: "login",
-    entityType: "auth",
-    entityId: data.user.id,
-    ipAddress,
-    userAgent,
-  });
-
-  redirect("/dashboard");
-}
-
 const signUpSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters."),
   fullName: z.string().min(1, "Full name is required."),
-  requestedRoleId: z.string().uuid().optional().or(z.literal("")),
-  requestedPropertyId: z.string().uuid().optional().or(z.literal("")),
+  requestedRoleId: z.string().optional().or(z.literal("")),
+  requestedPropertyId: z.string().optional().or(z.literal("")),
   justification: z.string().optional(),
 });
 
+/**
+ * Sign-in itself is not a Server Action any more — the /login page links straight to Zoho
+ * Catalyst's Hosted Login (see src/lib/catalyst/env.ts), which also covers "Forgot password?"
+ * natively. Registration keeps its own custom form (with the justification field, which Catalyst
+ * has no equivalent for) but creates the account via Catalyst's registerUser API — Catalyst emails
+ * the new user a link to set their own password, so no password is collected or transits this
+ * server.
+ */
 export async function signUpAction(
   _prevState: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
   const parsed = signUpSchema.safeParse({
     email: formData.get("email"),
-    password: formData.get("password"),
     fullName: formData.get("fullName"),
     requestedRoleId: formData.get("requestedRoleId") ?? "",
     requestedPropertyId: formData.get("requestedPropertyId") ?? "",
@@ -124,33 +64,48 @@ export async function signUpAction(
     return { error: "Too many registration attempts from this location. Try again later." };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: { data: { full_name: parsed.data.fullName } },
-  });
+  const nameParts = parsed.data.fullName.trim().split(/\s+/);
+  const firstName = nameParts[0] ?? parsed.data.fullName.trim();
+  const lastName = nameParts.slice(1).join(" ") || firstName;
 
-  if (error || !data.user) {
-    return { error: error?.message ?? "Could not create account." };
+  const catalystApp = catalystAdminApp();
+  let registered;
+  try {
+    registered = await catalystApp
+      .userManagement()
+      .registerUser(
+        { platform_type: "web" },
+        { first_name: firstName, last_name: lastName, email_id: parsed.data.email },
+      );
+  } catch {
+    return { error: "Could not create account. This email may already be registered." };
   }
 
-  // The `on_auth_user_created` trigger (drizzle/0001_auth_helpers_and_rls.sql) already inserted
-  // the `profiles` row with status = pending_approval. We only record the registration request
-  // (what the user is asking for) — approval/role/property assignment is an admin-only action.
-  const db = getDb();
-  await db.insert(registrationRequests).values({
-    userId: data.user.id,
-    requestedRoleId: parsed.data.requestedRoleId || null,
-    requestedPropertyId: parsed.data.requestedPropertyId || null,
+  const zuid = registered.user_details.user_id;
+
+  // Catalyst's own Authentication record exists now, but nothing auto-creates the matching Users
+  // Data Store row the way Supabase's on_auth_user_created trigger did — insert it explicitly,
+  // starting pending_approval same as before.
+  const userRow = await catalystApp.datastore().table("Users").insertRow({
+    zuid,
+    full_name: parsed.data.fullName,
+    email: parsed.data.email,
+    status: "pending_approval",
+  });
+  const userId = userRow.ROWID as string;
+
+  await catalystApp.datastore().table("RegistrationRequests").insertRow({
+    user_id: userId,
+    requested_role_id: parsed.data.requestedRoleId || null,
+    requested_property_id: parsed.data.requestedPropertyId || null,
     justification: parsed.data.justification ?? null,
   });
 
   await writeAuditLog({
-    actorId: data.user.id,
+    actorId: null,
     eventType: "registration",
-    entityType: "profiles",
-    entityId: data.user.id,
+    entityType: "Users",
+    entityId: userId,
     ipAddress,
   });
 
@@ -158,97 +113,27 @@ export async function signUpAction(
 }
 
 export async function signOutAction() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const zohoUser = await catalystApp
+    .userManagement()
+    .getCurrentUser()
+    .catch(() => null);
 
-  await supabase.auth.signOut();
-
-  if (user) {
-    await writeAuditLog({
-      actorId: user.id,
-      eventType: "logout",
-      entityType: "auth",
-      entityId: user.id,
-    });
+  if (zohoUser) {
+    const userRows = await catalystApp
+      .datastore()
+      .table("Users")
+      .getRows({ criteria: `Users.zuid == '${zohoUser.user_id}'`, maxRows: 1 });
+    const userId = userRows[0]?.ROWID;
+    if (userId) {
+      await writeAuditLog({
+        actorId: userId,
+        eventType: "logout",
+        entityType: "Users",
+        entityId: userId,
+      });
+    }
   }
 
-  redirect("/login");
-}
-
-const forgotPasswordSchema = z.object({ email: z.string().email() });
-
-export async function forgotPasswordAction(
-  _prevState: ActionResult,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = forgotPasswordSchema.safeParse({ email: formData.get("email") });
-  if (!parsed.success) {
-    return { error: "Enter a valid email address." };
-  }
-
-  const { ipAddress, userAgent } = await requestMeta();
-  if (
-    await isRateLimited({
-      ipAddress,
-      eventType: "password_reset_requested",
-      maxAttempts: 5,
-      windowMinutes: 60,
-    })
-  ) {
-    // Same generic response as success — avoids both user enumeration and revealing that
-    // rate limiting triggered, per the "do not branch on whether the email exists" rule below.
-    return {};
-  }
-
-  await writeAuditLog({
-    actorId: null,
-    eventType: "password_reset_requested",
-    entityType: "auth",
-    ipAddress,
-    userAgent,
-  });
-
-  const supabase = await createSupabaseServerClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-  // Deliberately do not branch on whether the email exists — avoids user enumeration.
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${siteUrl}/reset-password`,
-  });
-
-  return {};
-}
-
-const resetPasswordSchema = z.object({
-  password: z.string().min(8, "Password must be at least 8 characters."),
-});
-
-export async function resetPasswordAction(
-  _prevState: ActionResult,
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = resetPasswordSchema.safeParse({ password: formData.get("password") });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid password." };
-  }
-
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.updateUser({ password: parsed.data.password });
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  if (data.user) {
-    await writeAuditLog({
-      actorId: data.user.id,
-      eventType: "status_changed",
-      entityType: "auth",
-      entityId: data.user.id,
-      reason: "password_reset",
-    });
-  }
-
-  redirect("/login");
+  redirect(getCatalystLogoutUrl());
 }

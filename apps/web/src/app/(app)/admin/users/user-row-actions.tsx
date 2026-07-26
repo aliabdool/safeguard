@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 
-import { reactivateUserAction, revokeSessionsAction, suspendUserAction } from "./actions";
+import { reactivateUserAction, suspendUserAction } from "./actions";
 import type { ActionResult } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,20 +32,11 @@ export function UserRowActions({
     reactivateUserAction,
     initialState,
   );
-  const [, revokeAction, revokePending] = useActionState(revokeSessionsAction, initialState);
-  const [open, setOpen] = useState(false);
 
   return (
     <div className="flex justify-end gap-2">
-      <form action={revokeAction}>
-        <input type="hidden" name="userId" value={userId} />
-        <Button type="submit" size="sm" variant="outline" disabled={revokePending}>
-          Revoke sessions
-        </Button>
-      </form>
-
       {status === "active" ? (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog>
           <DialogTrigger asChild>
             <Button size="sm" variant="destructive">
               Suspend

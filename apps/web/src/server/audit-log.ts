@@ -1,7 +1,6 @@
 import "server-only";
 
-import { getDb } from "@/db";
-import { auditLog } from "@/db/schema";
+import { catalystAdminApp } from "@/lib/catalyst/app";
 
 export type AuditLogEventType =
   | "login"
@@ -50,24 +49,28 @@ export interface WriteAuditLogInput {
 }
 
 /**
- * The only code path that writes to `audit_log`. Never pass passwords, secrets, or medical
- * clinical notes in `previousValue`/`newValue` — see docs/security-model.md §3.4. The table has
- * no UPDATE/DELETE grant at all, so this function only ever inserts.
+ * The only code path that writes to Catalyst's AuditTrail table. Never pass passwords, secrets, or
+ * medical clinical notes in `previousValue`/`newValue` — see docs/security-model.md §3.4.
+ *
+ * Uses the admin-scoped app rather than the caller's own request-scoped session because this is
+ * called from contexts with no session at all (failed_login, registration, before a user has an
+ * active account) as well as from authenticated actions — always attributable via `actorId`
+ * itself, never via which session performed the write.
  */
 export async function writeAuditLog(input: WriteAuditLogInput) {
-  const db = getDb();
-  await db.insert(auditLog).values({
-    actorId: input.actorId,
-    eventType: input.eventType,
-    entityType: input.entityType,
-    entityId: input.entityId ?? null,
-    propertyId: input.propertyId ?? null,
-    departmentId: input.departmentId ?? null,
-    previousValue: input.previousValue ?? null,
-    newValue: input.newValue ?? null,
+  const catalystApp = catalystAdminApp();
+  await catalystApp.datastore().table("AuditTrail").insertRow({
+    actor_user_id: input.actorId,
+    event_type: input.eventType,
+    entity_type: input.entityType,
+    entity_id: input.entityId ?? null,
+    property_id: input.propertyId ?? null,
+    department_id: input.departmentId ?? null,
+    previous_value: input.previousValue != null ? JSON.stringify(input.previousValue) : null,
+    new_value: input.newValue != null ? JSON.stringify(input.newValue) : null,
     reason: input.reason ?? null,
-    requestId: input.requestId ?? null,
-    ipAddress: input.ipAddress ?? null,
-    userAgent: input.userAgent ?? null,
+    request_id: input.requestId ?? null,
+    ip_address: input.ipAddress ?? null,
+    user_agent: input.userAgent ?? null,
   });
 }
