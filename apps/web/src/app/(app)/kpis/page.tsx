@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,12 +10,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getDb } from "@/db";
-import { kpiDefinitions, properties } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { calculateKpi, isKpiImplemented } from "@/server/kpi/calculate";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
 import { KpiTile } from "./kpi-tile";
+
+interface PropertyRow extends CatalystRow {
+  name: string;
+}
+
+interface KpiDefinitionListRow extends CatalystRow {
+  kpi_code: string;
+}
 
 export default async function KpisPage({
   searchParams,
@@ -22,31 +31,40 @@ export default async function KpisPage({
 }) {
   const { propertyId } = await searchParams;
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
 
-  const allProperties = await db
-    .select({ id: properties.id, name: properties.name })
-    .from(properties);
-  const availableProperties = allProperties.filter((p) => ctx && hasPropertyAccess(ctx, p.id));
+  const allProperties = (await datastore
+    .table("Properties")
+    .getRows({ maxRows: 200 })) as PropertyRow[];
+  const availableProperties = allProperties.filter((p) => ctx && hasPropertyAccess(ctx, p.ROWID));
 
   const selectedPropertyId =
-    propertyId && availableProperties.some((p) => p.id === propertyId) ? propertyId : null;
+    propertyId && availableProperties.some((p) => p.ROWID === propertyId) ? propertyId : null;
 
-  const definitions = await db.select().from(kpiDefinitions).orderBy(kpiDefinitions.kpiCode);
-  const implemented = definitions.filter((d) => isKpiImplemented(d.kpiCode));
-  const notYetImplemented = definitions.filter((d) => !isKpiImplemented(d.kpiCode));
-
-  const tiles = await Promise.all(
-    implemented.map((d) => calculateKpi(d.kpiCode, { propertyId: selectedPropertyId })),
+  const definitions = ((await datastore
+    .table("KPIDefinitions")
+    .getRows({ maxRows: 200 })) as KpiDefinitionListRow[]).sort((a, b) =>
+    a.kpi_code.localeCompare(b.kpi_code),
   );
+  const implemented = definitions.filter((d) => isKpiImplemented(d.kpi_code));
+  const notYetImplemented = definitions.filter((d) => !isKpiImplemented(d.kpi_code));
+
+  const tiles = ctx
+    ? await Promise.all(
+        implemented.map((d) =>
+          calculateKpi(catalystApp, ctx, d.kpi_code, { propertyId: selectedPropertyId }),
+        ),
+      )
+    : [];
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">KPI dashboards</h1>
         <p className="text-muted-foreground text-sm">
-          Every figure below is computed live from Supabase records at page-load time — never
-          hard-coded. Click a tile for the full &ldquo;View calculation&rdquo; breakdown.
+          Every figure below is computed live from Catalyst Data Store records at page-load time —
+          never hard-coded. Click a tile for the full &ldquo;View calculation&rdquo; breakdown.
         </p>
       </div>
 
@@ -60,7 +78,7 @@ export default async function KpisPage({
             <SelectContent>
               <SelectItem value="all">All accessible properties</SelectItem>
               {availableProperties.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
+                <SelectItem key={p.ROWID} value={p.ROWID}>
                   {p.name}
                 </SelectItem>
               ))}
@@ -93,8 +111,8 @@ export default async function KpisPage({
             </Alert>
             <div className="mt-3 flex flex-wrap gap-2">
               {notYetImplemented.map((d) => (
-                <Badge key={d.kpiCode} variant="outline">
-                  {d.kpiCode}
+                <Badge key={d.kpi_code} variant="outline">
+                  {d.kpi_code}
                 </Badge>
               ))}
             </div>

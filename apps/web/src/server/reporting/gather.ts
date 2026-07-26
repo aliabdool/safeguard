@@ -11,12 +11,34 @@ import {
   controls,
   properties,
 } from "@/db/schema";
+import { catalystAdminApp } from "@/lib/catalyst/app";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi, type KpiTileResult } from "@/server/kpi/calculate";
 import { financialYearFor } from "@/server/kpi/period";
+import type { AuthContext } from "@/server/permissions";
 
 import type { AssurancePackInput } from "./assurance-pack";
 import type { BoardNarrativeInput } from "./board-narrative";
+
+/**
+ * NOTE (out of scope for the KPI/dashboard migration slice — the reporting module is being
+ * migrated separately): this file is still on Drizzle/Postgres for its own data (audits,
+ * capaActions, controlAssessments, properties below), while calculateKpi()/computeDataQuality()
+ * now query Catalyst Data Store. catalystAdminApp() + the synthetic group-wide SYSTEM_CTX are only
+ * a minimal compatibility shim so this file keeps typechecking against their new signatures — a
+ * report-generation job has no end-user session at this call depth (the caller already did its
+ * own permission check), see lib/catalyst/app.ts. The `propertyId` passed through gatherKpis below
+ * is still a Postgres UUID until this module's own Catalyst port lands, so it will not match
+ * Catalyst's Properties ROWIDs — a known gap, not something this KPI-module slice fixes.
+ */
+const SYSTEM_CTX: AuthContext = {
+  userId: "system-reporting",
+  status: "active",
+  roleCodes: ["SUPER_ADMIN"],
+  propertyIds: [],
+  departmentAccess: new Map(),
+  hasMedicalPermission: false,
+};
 
 const NARRATIVE_KPI_CODES = [
   "TOTAL_INCIDENTS",
@@ -55,8 +77,11 @@ async function gatherKpis(
   propertyId: string | null,
   asOfAnchor: Date,
 ): Promise<KpiTileResult[]> {
+  const catalystApp = catalystAdminApp();
   const results = await Promise.all(
-    NARRATIVE_KPI_CODES.map((code) => calculateKpi(code, { propertyId, asOf: asOfAnchor })),
+    NARRATIVE_KPI_CODES.map((code) =>
+      calculateKpi(catalystApp, SYSTEM_CTX, code, { propertyId, asOf: asOfAnchor }),
+    ),
   );
   return results.filter((r): r is KpiTileResult => r !== null);
 }
@@ -68,7 +93,13 @@ export async function gatherBoardNarrativeInput(
   const { fyLabel, period, propertyLabel } = await scopeMeta(propertyId, asOfAnchor);
   const [kpis, dataQuality] = await Promise.all([
     gatherKpis(propertyId, asOfAnchor),
-    computeDataQuality({ propertyId, periodStart: period.start, periodEnd: period.end }),
+    computeDataQuality({
+      catalystApp: catalystAdminApp(),
+      ctx: SYSTEM_CTX,
+      propertyId,
+      periodStart: period.start,
+      periodEnd: period.end,
+    }),
   ]);
   return { fyLabel, propertyLabel, generatedAt: new Date(), kpis, dataQuality };
 }
@@ -82,7 +113,13 @@ export async function gatherAssurancePackInput(
 
   const [kpis, dataQuality] = await Promise.all([
     gatherKpis(propertyId, asOfAnchor),
-    computeDataQuality({ propertyId, periodStart: period.start, periodEnd: period.end }),
+    computeDataQuality({
+      catalystApp: catalystAdminApp(),
+      ctx: SYSTEM_CTX,
+      propertyId,
+      periodStart: period.start,
+      periodEnd: period.end,
+    }),
   ]);
 
   const gapScopePredicate = propertyId
