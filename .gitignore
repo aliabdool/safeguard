@@ -37,3 +37,6 @@ pnpm-debug.log*
 coverage/
 playwright-report/
 test-results/
+
+# Git worktrees used for parallel background-agent work (not repo content)
+.claude/worktrees/
