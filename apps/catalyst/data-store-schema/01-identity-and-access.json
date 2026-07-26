@@ -1,0 +1,126 @@
+{
+  "_comment": "Identity & access tables. Ported from apps/web/src/db/schema/identity.ts + reference.ts. Catalyst scope is table-level (Global/Org/User) — see README for why property/department scoping is enforced in Functions, not here.",
+  "tables": [
+    {
+      "table_name": "Users",
+      "scope": "Org",
+      "comment": "Mirrors Catalyst's own Authentication user record 1:1 by zuid, plus SafeGuard-specific profile fields.",
+      "columns": [
+        { "column_name": "zuid", "type": "text", "notNull": true, "unique": true, "comment": "Catalyst Authentication user ID — the join key to everything else." },
+        { "column_name": "full_name", "type": "text", "notNull": true },
+        { "column_name": "email", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "status", "type": "enum", "values": ["pending_approval", "active", "suspended", "rejected"], "notNull": true, "default": "pending_approval" },
+        { "column_name": "phone", "type": "text", "nullable": true },
+        { "column_name": "job_title", "type": "text", "nullable": true },
+        { "column_name": "employment_type", "type": "text", "nullable": true },
+        { "column_name": "is_external", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "external_expiry_date", "type": "date", "nullable": true },
+        { "column_name": "approved_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "approved_at", "type": "datetime", "nullable": true },
+        { "column_name": "suspended_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "suspended_at", "type": "datetime", "nullable": true },
+        { "column_name": "suspension_reason", "type": "text", "nullable": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "updated_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "Roles",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "code", "type": "text", "notNull": true, "unique": true, "comment": "SUPER_ADMIN, GROUP_HS_ADMIN, HOTEL_GENERAL_MANAGER, PROPERTY_HS_OFFICER, INTERNAL_AUDITOR, DEPARTMENT_MANAGER, DUTY_MANAGER, NURSE_MEDICAL, INCIDENT_REPORTER, EXECUTIVE_READONLY, EXTERNAL_AUDITOR_READONLY, STANDARD_VIEWER. Full mapping to management's 9 named access layers: docs/2026-07-zoho-catalyst-access-and-dashboard-model.md." },
+        { "column_name": "name", "type": "text", "notNull": true },
+        { "column_name": "description", "type": "text", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "Permissions",
+      "scope": "Global",
+      "comment": "Explicit, non-role-implied permission codes — view_medical_notes, edit_medical_notes, export_medical_notes, generate_board_narrative, export_assurance_pack, export_reports (the six raw KPI/incident/CAPA/audit/evidence-map/framework-readiness exports), approve_documents_groupwide, view_all_properties, etc. Never inferred from role — see docs/2026-07-zoho-catalyst-access-and-dashboard-model.md for which of the 9 access layers may be GRANTED each of these (grantable does not mean automatic).",
+      "columns": [
+        { "column_name": "code", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "description", "type": "text", "notNull": true },
+        { "column_name": "is_sensitive", "type": "boolean", "notNull": true, "default": false, "comment": "Sensitive permissions always create an AuditTrail row on grant/revoke and on use." }
+      ]
+    },
+    {
+      "table_name": "UserRoles",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "user_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "role_id", "type": "lookup", "references": "Roles", "notNull": true },
+        { "column_name": "granted_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "granted_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "UserPermissions",
+      "scope": "Org",
+      "comment": "Explicit grant table — this is how medical-note access, board-narrative generation, assurance-pack export, group-wide document approval are actually controlled. A user's Roles alone never grant these.",
+      "columns": [
+        { "column_name": "user_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "permission_code", "type": "lookup", "references": "Permissions", "notNull": true },
+        { "column_name": "granted_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "granted_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "reason", "type": "text", "nullable": true },
+        { "column_name": "revoked_at", "type": "datetime", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "UserPropertyAccess",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "user_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "granted_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "granted_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "UserDepartmentAccess",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "user_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "notNull": true },
+        { "column_name": "granted_by", "type": "lookup", "references": "Users", "notNull": true }
+      ]
+    },
+    {
+      "table_name": "AuditTrail",
+      "scope": "Org",
+      "comment": "Every sensitive action (§14 of the brief) writes here: medical access, exports, document approval, CAPA verification, critical-finding closure, permission changes.",
+      "columns": [
+        { "column_name": "actor_user_id", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "event_type", "type": "text", "notNull": true },
+        { "column_name": "entity_type", "type": "text", "notNull": true },
+        { "column_name": "entity_id", "type": "text", "nullable": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "nullable": true },
+        { "column_name": "previous_value", "type": "text", "nullable": true, "comment": "JSON, stored as text — Data Store has no native JSONB column." },
+        { "column_name": "new_value", "type": "text", "nullable": true, "comment": "JSON, stored as text — Data Store has no native JSONB column." },
+        { "column_name": "reason", "type": "text", "nullable": true },
+        { "column_name": "request_id", "type": "text", "nullable": true },
+        { "column_name": "ip_address", "type": "text", "nullable": true },
+        { "column_name": "user_agent", "type": "text", "nullable": true },
+        { "column_name": "occurred_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "RegistrationRequests",
+      "scope": "Org",
+      "comment": "Self-registration request metadata — ported from apps/web registration_requests. Separate from Users.status so the requested role/property and any rejection reason survive even after the request is actioned.",
+      "columns": [
+        { "column_name": "user_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "requested_role_id", "type": "lookup", "references": "Roles", "nullable": true },
+        { "column_name": "requested_property_id", "type": "lookup", "references": "Properties", "nullable": true },
+        { "column_name": "justification", "type": "text", "nullable": true },
+        { "column_name": "status", "type": "enum", "values": ["pending", "approved", "rejected"], "notNull": true, "default": "pending" },
+        { "column_name": "reviewed_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "reviewed_at", "type": "datetime", "nullable": true },
+        { "column_name": "rejection_reason", "type": "text", "nullable": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    }
+  ]
+}

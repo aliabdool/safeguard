@@ -1,0 +1,55 @@
+{
+  "_comment": "Documents/evidence library. Phase 7. A single DocumentVersions row can be linked from many DocumentEvidenceLinks rows (one approved fire-safety certificate can support several controls across several frameworks at once) — this many-to-many shape is what powers the document detail page's 'Supports N records across M frameworks' summary via computeEvidenceReuseSummary() in functions/shared/pure/evidence-reuse.ts. Expiry is evaluated live from expiry_date against the current date every time a link is used as evidence (isValidEvidence() in document-rules.ts) — never cached as a stored boolean that could go stale.",
+  "tables": [
+    {
+      "table_name": "Documents",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "title", "type": "text", "notNull": true },
+        { "column_name": "category", "type": "text", "notNull": true, "comment": "policy | procedure | risk_assessment | statutory_certificate | training_record | inspection_report | other" },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true, "comment": "Nullable — some documents (group-wide policy) aren't property-scoped." },
+        { "column_name": "owner_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "DocumentVersions",
+      "scope": "Org",
+      "comment": "One row per uploaded version — a new version supersedes the previous rather than overwriting it, so evidence links to an older version stay auditable.",
+      "columns": [
+        { "column_name": "document_id", "type": "lookup", "references": "Documents", "notNull": true },
+        { "column_name": "version_number", "type": "bigint", "notNull": true },
+        { "column_name": "file_id", "type": "text", "notNull": true, "comment": "Catalyst File Store reference." },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "draft", "comment": "draft | pending_approval | approved | rejected | superseded — validated against isValidDocumentStatusTransition()." },
+        { "column_name": "expiry_date", "type": "date", "nullable": true },
+        { "column_name": "review_date", "type": "date", "nullable": true },
+        { "column_name": "uploaded_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "uploaded_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "DocumentApprovals",
+      "scope": "Org",
+      "comment": "The approval DECISION as its own record, mirroring the CAPAVerification/IncidentInvestigation split — who approved/rejected, when, and why, independent of the status column on DocumentVersions.",
+      "columns": [
+        { "column_name": "document_version_id", "type": "lookup", "references": "DocumentVersions", "notNull": true },
+        { "column_name": "approver_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "outcome", "type": "text", "notNull": true, "comment": "approved | rejected" },
+        { "column_name": "notes", "type": "text", "nullable": true },
+        { "column_name": "decided_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "DocumentEvidenceLinks",
+      "scope": "Org",
+      "comment": "Many-to-many: one approved DocumentVersion can support many linked entities (control_assessment, capa, audit_finding, climate_risk) and one linked entity can cite many documents. This is the table computeEvidenceReuseSummary() reads to produce 'Supports N records across M frameworks'.",
+      "columns": [
+        { "column_name": "document_version_id", "type": "lookup", "references": "DocumentVersions", "notNull": true },
+        { "column_name": "linked_entity_type", "type": "text", "notNull": true, "comment": "control_assessment | capa | audit_finding | climate_risk" },
+        { "column_name": "linked_entity_id", "type": "text", "notNull": true },
+        { "column_name": "linked_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "linked_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    }
+  ]
+}

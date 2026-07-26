@@ -1,0 +1,21 @@
+{
+  "_comment": "Data quality exceptions. Phase 11. Already referenced by api-dashboard-summary's getDataQualityExceptionCount() since Phase 4 but not formally schema'd until now. Populated by the scanForExceptions() service (functions/shared/services/data-quality-service.ts), which runs the nine named pure rules in functions/shared/pure/data-quality-rules.ts against live candidate records and syncs this table: opens a new row per newly-detected exception, resolves (never deletes) rows for exceptions no longer detected. Intended to run on a Cron schedule (Phase 13) as well as on-demand.",
+  "tables": [
+    {
+      "table_name": "DataQualityExceptions",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "severity", "type": "text", "notNull": true, "comment": "critical | major | minor" },
+        { "column_name": "module", "type": "text", "notNull": true, "comment": "KPI | Incidents | CAPA | Documents | Audits | Controls | Materiality | Climate" },
+        { "column_name": "record_id", "type": "text", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true },
+        { "column_name": "description", "type": "text", "notNull": true },
+        { "column_name": "suggested_fix", "type": "text", "notNull": true },
+        { "column_name": "owner_id", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "open", "comment": "open | resolved" },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "resolved_at", "type": "datetime", "nullable": true }
+      ]
+    }
+  ]
+}

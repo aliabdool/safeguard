@@ -1,0 +1,74 @@
+{
+  "_comment": "Full materiality/climate-risk persistence — expanded from the Phase 11 minimal scope (data-quality exceptions 8 and 9) to full parity with apps/web's materiality.ts/climate-risk.ts as part of the Supabase-to-Catalyst migration. Scoring logic stays in functions/shared/pure/materiality-scoring.ts and climate-risk.ts; these tables now hold every field that logic reads/writes, not just the data-quality-check subset.",
+  "tables": [
+    {
+      "table_name": "MaterialTopics",
+      "scope": "Org",
+      "comment": "One row per topic per property per reporting period. GRI (impact/double materiality) and IFRS S1 (financial/single materiality) are scored independently in the same row — see classifyMateriality() in the ported pure logic, which combines the two only into a label, never a blended number.",
+      "columns": [
+        { "column_name": "topic_name", "type": "text", "notNull": true },
+        { "column_name": "topic_description", "type": "text", "nullable": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true, "comment": "Null = group-wide topic." },
+        { "column_name": "reporting_period", "type": "text", "notNull": true },
+
+        { "column_name": "gri_impact_type", "type": "enum", "values": ["actual", "potential"], "nullable": true },
+        { "column_name": "gri_impact_valence", "type": "enum", "values": ["positive", "negative"], "nullable": true },
+        { "column_name": "gri_severity", "type": "bigint", "nullable": true },
+        { "column_name": "gri_scale", "type": "bigint", "nullable": true },
+        { "column_name": "gri_scope", "type": "bigint", "nullable": true },
+        { "column_name": "gri_irremediable", "type": "boolean", "nullable": true },
+        { "column_name": "gri_likelihood", "type": "bigint", "nullable": true },
+        { "column_name": "gri_impact_score", "type": "bigint", "nullable": true, "comment": "This is the general 'impact materiality score' — was previously named gri_impact_materiality_score." },
+        { "column_name": "gri_material", "type": "boolean", "nullable": true },
+
+        { "column_name": "ifrs_risk_or_opportunity", "type": "enum", "values": ["risk", "opportunity"], "nullable": true },
+        { "column_name": "ifrs_time_horizon", "type": "enum", "values": ["short_term", "medium_term", "long_term"], "nullable": true },
+        { "column_name": "ifrs_likelihood", "type": "bigint", "nullable": true },
+        { "column_name": "ifrs_financial_magnitude", "type": "bigint", "nullable": true },
+        { "column_name": "ifrs_effect_cash_flows", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "ifrs_effect_access_to_finance", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "ifrs_effect_cost_of_capital", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "ifrs_effect_business_model_strategy", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "ifrs_investor_relevance", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "ifrs_financial_score", "type": "bigint", "nullable": true, "comment": "Null triggers the 'materiality topic missing financial score' data-quality exception." },
+        { "column_name": "ifrs_material", "type": "boolean", "nullable": true },
+
+        { "column_name": "status", "type": "enum", "values": ["draft", "under_review", "approved"], "notNull": true, "default": "draft" },
+        { "column_name": "assessed_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "approved_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "approved_at", "type": "datetime", "nullable": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "updated_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "MaterialityConsultations",
+      "scope": "Org",
+      "comment": "Repeatable stakeholder/expert consultation records — GRI 3 requires these be documented, not just a checkbox. Ported from apps/web materiality_consultations.",
+      "columns": [
+        { "column_name": "material_topic_id", "type": "lookup", "references": "MaterialTopics", "notNull": true },
+        { "column_name": "consultation_type", "type": "enum", "values": ["stakeholder", "expert"], "notNull": true },
+        { "column_name": "participant_name_or_group", "type": "text", "notNull": true },
+        { "column_name": "method", "type": "text", "nullable": true },
+        { "column_name": "consultation_date", "type": "date", "nullable": true },
+        { "column_name": "summary", "type": "text", "nullable": true },
+        { "column_name": "recorded_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "recorded_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "ClimateRisks",
+      "scope": "Org",
+      "comment": "IFRS S2 climate-related H&S risks ONLY — heat stress, extreme-weather exposure, wildfire smoke, etc. Never ordinary incidents.",
+      "columns": [
+        { "column_name": "hazard_type", "type": "text", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "likelihood_score", "type": "bigint", "nullable": true },
+        { "column_name": "impact_score", "type": "bigint", "nullable": true },
+        { "column_name": "residual_risk_score", "type": "decimal", "nullable": true, "comment": "Null triggers the 'climate risk missing residual risk score' data-quality exception." },
+        { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "_comment": "Master data — never hardcoded in Functions or client code. Ported from apps/web/src/db/schema/reference.ts + framework.ts + kpi.ts. Properties/Departments seeded once via a one-time seed function, same pattern as Supabase's scripts/seed.sql.",
+  "tables": [
+    {
+      "table_name": "Properties",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "code", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "name", "type": "text", "notNull": true },
+        { "column_name": "brand", "type": "text", "nullable": true },
+        { "column_name": "country", "type": "text", "notNull": true, "default": "Mauritius" },
+        { "column_name": "is_active", "type": "boolean", "notNull": true, "default": true }
+      ],
+      "seed_rows": [
+        { "code": "SL-HOTELMGMT", "name": "Sunlife Hotel Management" },
+        { "code": "LA-PIROGUE", "name": "La Pirogue Hotel" },
+        { "code": "SUGAR-BEACH", "name": "Sugar Beach Hotel" },
+        { "code": "LONG-BEACH", "name": "Long Beach Hotel" },
+        { "code": "ILE-AUX-CERF", "name": "Ile Aux Cerf" }
+      ]
+    },
+    {
+      "table_name": "Departments",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "code", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "name", "type": "text", "notNull": true },
+        { "column_name": "is_active", "type": "boolean", "notNull": true, "default": true }
+      ],
+      "seed_rows_ref": "same 19-department list as apps/web/scripts/seed.sql — Housekeeping, Food & Beverage, Kitchen, Stewarding, Engineering & Maintenance, Front Office, Guest Relations, Security, Spa & Wellness, Recreation & Entertainment, Public Area, Grounds & Landscaping, Human Resources, Finance, Purchasing & Stores, IT & Systems, Sales & Marketing, Administration, Executive Office"
+    },
+    {
+      "table_name": "PropertyDepartments",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "notNull": true }
+      ]
+    },
+    {
+      "table_name": "IncidentTypes",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "code", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "label", "type": "text", "notNull": true }
+      ]
+    },
+    {
+      "table_name": "InjuryMechanisms",
+      "scope": "Global",
+      "comment": "The 15-item controlled vocabulary, ported verbatim from injuryMechanismEnum in _enums.ts.",
+      "columns": [
+        { "column_name": "code", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "label", "type": "text", "notNull": true }
+      ],
+      "seed_rows": [
+        { "code": "slip_trip_fall_same_level", "label": "Slip / trip / fall (same level)" },
+        { "code": "fall_from_height", "label": "Fall from height" },
+        { "code": "cut_laceration", "label": "Cut / laceration" },
+        { "code": "burn_scald", "label": "Burn / scald" },
+        { "code": "manual_handling", "label": "Manual handling" },
+        { "code": "struck_by_object", "label": "Struck by object" },
+        { "code": "struck_against_object", "label": "Struck against object" },
+        { "code": "falling_object", "label": "Falling object" },
+        { "code": "chemical_exposure", "label": "Chemical exposure" },
+        { "code": "electrical_contact", "label": "Electrical contact" },
+        { "code": "vehicle_related", "label": "Vehicle-related" },
+        { "code": "ergonomic_repetitive_strain", "label": "Ergonomic / repetitive strain" },
+        { "code": "food_allergen_exposure", "label": "Food-allergen exposure" },
+        { "code": "marine_swimming", "label": "Marine / swimming" },
+        { "code": "other", "label": "Other" }
+      ]
+    },
+    {
+      "table_name": "RootCauseCategories",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "code", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "label", "type": "text", "notNull": true },
+        { "column_name": "cause_type", "type": "enum", "values": ["immediate", "root"], "notNull": true }
+      ]
+    },
+    {
+      "table_name": "Frameworks",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "code", "type": "text", "notNull": true, "unique": true, "comment": "ISO45001, HOTEL_OPS, MU_LEGAL, GRI403, IFRS_S1, IFRS_S2, SASB_HOTELS, UNGC, ILO_OSH" },
+        { "column_name": "name", "type": "text", "notNull": true },
+        { "column_name": "description", "type": "text", "notNull": true }
+      ]
+    },
+    {
+      "table_name": "FrameworkRequirements",
+      "scope": "Global",
+      "comment": "New in the Catalyst version — powers the Assurance Evidence Map (Improvement 3). Not present as a separate table in the Supabase build; clause references lived only as text on ControlFrameworkMappings.",
+      "columns": [
+        { "column_name": "framework_id", "type": "lookup", "references": "Frameworks", "notNull": true },
+        { "column_name": "clause_reference", "type": "text", "notNull": true },
+        { "column_name": "title", "type": "text", "notNull": true },
+        { "column_name": "description", "type": "text", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "Controls",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "control_code", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "title", "type": "text", "notNull": true },
+        { "column_name": "category", "type": "text", "nullable": true },
+        { "column_name": "is_life_safety_critical", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "is_legal", "type": "boolean", "notNull": true, "default": false }
+      ]
+    },
+    {
+      "table_name": "ControlFrameworkMappings",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "control_id", "type": "lookup", "references": "Controls", "notNull": true },
+        { "column_name": "framework_requirement_id", "type": "lookup", "references": "FrameworkRequirements", "notNull": true },
+        { "column_name": "weight", "type": "decimal", "notNull": true, "default": 1 }
+      ]
+    },
+    {
+      "table_name": "KPIDefinitions",
+      "scope": "Global",
+      "columns": [
+        { "column_name": "kpi_code", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "name", "type": "text", "notNull": true },
+        { "column_name": "definition", "type": "text", "notNull": true },
+        { "column_name": "formula", "type": "text", "notNull": true },
+        { "column_name": "unit", "type": "text", "notNull": true },
+        { "column_name": "classification", "type": "enum", "values": ["leading", "lagging", "assurance"], "notNull": true },
+        { "column_name": "direction", "type": "enum", "values": ["lower_better", "higher_better"], "notNull": true },
+        { "column_name": "target", "type": "decimal", "nullable": true },
+        { "column_name": "warning_threshold", "type": "decimal", "nullable": true },
+        { "column_name": "critical_threshold", "type": "decimal", "nullable": true },
+        { "column_name": "reporting_frequency", "type": "text", "notNull": true },
+        { "column_name": "source_tables", "type": "text", "notNull": true, "comment": "JSON array, stored as text — Catalyst Data Store has no native array column type." },
+        { "column_name": "effective_from", "type": "date", "notNull": true },
+        { "column_name": "calculator_function", "type": "text", "nullable": true, "comment": "Name of the Function/module implementing this KPI, or null if not yet implemented (mirrors isKpiImplemented()) — the API must return \"not yet calculable\", never a fabricated number, when this is null." }
+      ]
+    }
+  ]
+}

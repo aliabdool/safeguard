@@ -1,0 +1,31 @@
+{
+  "_comment": "File governance metadata — ported from apps/web files.ts + file_access_log.ts. Added during the Supabase-to-Catalyst migration: Catalyst File Store holds bytes, but nothing tracked which folder/bucket a file lives in, who uploaded it, its checksum/validation status, or who viewed/downloaded it. These rows are that audit trail; Function code must write one Files row per upload and one FileAccessLog row per signed-URL issuance, mirroring the Supabase RLS-backed behaviour these tables replace.",
+  "tables": [
+    {
+      "table_name": "Files",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "bucket", "type": "enum", "values": ["incident-evidence", "controlled-documents", "audit-evidence", "capa-evidence", "restricted-medical"], "notNull": true, "comment": "Maps to a Catalyst File Store folder of the same name." },
+        { "column_name": "storage_path", "type": "text", "notNull": true },
+        { "column_name": "original_filename", "type": "text", "notNull": true },
+        { "column_name": "mime_type", "type": "text", "notNull": true },
+        { "column_name": "size_bytes", "type": "bigint", "notNull": true },
+        { "column_name": "checksum_sha256", "type": "text", "nullable": true },
+        { "column_name": "uploaded_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "uploaded_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "validation_status", "type": "enum", "values": ["pending", "passed", "rejected"], "notNull": true, "default": "pending" }
+      ]
+    },
+    {
+      "table_name": "FileAccessLog",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "file_id", "type": "lookup", "references": "Files", "notNull": true },
+        { "column_name": "accessed_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "accessed_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "action", "type": "enum", "values": ["view", "download"], "notNull": true },
+        { "column_name": "signed_url_expires_at", "type": "datetime", "nullable": true }
+      ]
+    }
+  ]
+}

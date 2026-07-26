@@ -1,0 +1,41 @@
+{
+  "_comment": "Audit programme + findings. Added in Phase 9 as a dependency of the OPEN_CRIT_MAJOR_FINDINGS KPI and the Assurance Evidence Map (Phase 10); referenced by api-dashboard-summary's getAuditStatus() since Phase 4 but not formally schema'd until now.",
+  "tables": [
+    {
+      "table_name": "Audits",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "audit_number", "type": "text", "notNull": true, "unique": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "audit_type", "type": "text", "notNull": true, "comment": "internal | external | department_inspection | statutory" },
+        { "column_name": "framework_id", "type": "lookup", "references": "Frameworks", "nullable": true },
+        { "column_name": "lead_auditor_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "planned_date", "type": "date", "notNull": true },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "planned", "comment": "planned | in_progress | closed" },
+        { "column_name": "closed_at", "type": "datetime", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "AuditFindings",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "audit_id", "type": "lookup", "references": "Audits", "notNull": true },
+        { "column_name": "control_id", "type": "lookup", "references": "Controls", "nullable": true },
+        { "column_name": "classification", "type": "text", "notNull": true, "comment": "critical_nc | major_nc | minor_nc | observation" },
+        { "column_name": "description", "type": "text", "notNull": true },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "open", "comment": "open | action_assigned | verified | closed" },
+        { "column_name": "raised_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "raised_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "closed_at", "type": "datetime", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "AuditFindingCAPALinks",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "audit_finding_id", "type": "lookup", "references": "AuditFindings", "notNull": true },
+        { "column_name": "capa_id", "type": "lookup", "references": "CAPA", "notNull": true }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "safeguard-development",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "services": [
+    {
+      // Self-reference binding required by @opennextjs/cloudflare for ISR/on-demand revalidation.
+      // The service name must match the worker `name` for whichever environment is deploying.
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "safeguard-development",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "safeguard-development-opennext-cache",
+    },
+  ],
+  // Non-secret runtime config only. Secrets (SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL, CRON_SECRET)
+  // are set per-environment via `wrangler secret put <NAME> --env <environment>` and never appear
+  // in this file. NEXT_PUBLIC_* values are additionally required at BUILD time (Next.js inlines
+  // them into the client bundle) — set them in the CI job's environment before `next build` runs,
+  // not only here. See docs/system-architecture.md §7 and .env.example.
+  "vars": {
+    "NEXT_PUBLIC_APP_ENV": "development",
+  },
+
+  "env": {
+    // Client Demonstration environment — dedicated Supabase project, synthetic data only,
+    // mandatory on-screen banner (see docs/system-architecture.md §7).
+    "demonstration": {
+      "name": "safeguard-demonstration",
+      "services": [
+        { "binding": "WORKER_SELF_REFERENCE", "service": "safeguard-demonstration" },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "safeguard-demonstration-opennext-cache",
+        },
+      ],
+      "vars": {
+        "NEXT_PUBLIC_APP_ENV": "demo",
+      },
+    },
+
+    "production": {
+      "name": "safeguard-production",
+      "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "safeguard-production" }],
+      "r2_buckets": [
+        {
+          "binding": "NEXT_INC_CACHE_R2_BUCKET",
+          "bucket_name": "safeguard-production-opennext-cache",
+        },
+      ],
+      "vars": {
+        "NEXT_PUBLIC_APP_ENV": "production",
+      },
+    },
+  },
+}

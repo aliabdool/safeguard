@@ -1,0 +1,16 @@
+{
+  "_comment": "Report/export audit log. Phase 12. Every export — board narrative, assurance pack, or a raw KPI/incident/CAPA/audit/evidence-map/framework-readiness dump — writes exactly one row here via recordExport() in functions/shared/services/report-service.ts, in addition to the usual AuditTrail entry. Kept as its own table (rather than folded into AuditTrail) because exports carry filters and a record count that don't fit the generic audit-entry shape.",
+  "tables": [
+    {
+      "table_name": "ReportExports",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "report_type", "type": "text", "notNull": true, "comment": "board_narrative | assurance_pack | kpi_export | incident_export | capa_export | audit_export | evidence_map_export | framework_readiness_export" },
+        { "column_name": "exported_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "filters_json", "type": "text", "notNull": true, "comment": "JSON snapshot of the filters used, stored as text." },
+        { "column_name": "record_count", "type": "bigint", "notNull": true },
+        { "column_name": "exported_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    }
+  ]
+}

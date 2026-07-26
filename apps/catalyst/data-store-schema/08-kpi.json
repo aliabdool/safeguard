@@ -1,0 +1,39 @@
+{
+  "_comment": "KPI calculation snapshots — one append-only row per calculateKpi() call, read by api-dashboard-summary's getKpiOverview() instead of live recalculation. Mirrors kpi_calculations from the Supabase build (docs/kpi-catalogue.md §2-3). KPIDefinitions itself already lives in 02-master-data.json.",
+  "tables": [
+    {
+      "table_name": "ExposureData",
+      "scope": "Org",
+      "comment": "Manually-entered, versioned exposure data (hours worked, occupied room nights) that feeds rate-based KPIs (LTIFR, TRIR, Severity Rate, guest-incidents-per-1000-room-nights). Ported from apps/web exposure_data. No rostering/PMS integration — see docs/implementation-plan.md §4 assumption 2.",
+      "columns": [
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "period_start", "type": "date", "notNull": true },
+        { "column_name": "period_end", "type": "date", "notNull": true },
+        { "column_name": "total_hours_worked", "type": "decimal", "nullable": true },
+        { "column_name": "occupied_room_nights", "type": "decimal", "nullable": true },
+        { "column_name": "entered_by", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "approved_by", "type": "lookup", "references": "Users", "nullable": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "KPISnapshots",
+      "scope": "Org",
+      "columns": [
+        { "column_name": "kpi_code", "type": "lookup", "references": "KPIDefinitions", "notNull": true },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true, "comment": "Null = group-wide." },
+        { "column_name": "department_id", "type": "lookup", "references": "Departments", "nullable": true },
+        { "column_name": "financial_year", "type": "text", "nullable": true, "comment": "e.g. FY2027 — read by api-dashboard-summary's getKpiOverview()." },
+        { "column_name": "current_value", "type": "decimal", "nullable": true, "comment": "Null means genuinely not-yet-calculable, never a fabricated 0." },
+        { "column_name": "comparison_value", "type": "decimal", "nullable": true },
+        { "column_name": "target", "type": "decimal", "nullable": true },
+        { "column_name": "direction", "type": "text", "nullable": true },
+        { "column_name": "unit", "type": "text", "nullable": true },
+        { "column_name": "name", "type": "text", "nullable": true },
+        { "column_name": "data_quality_status", "type": "text", "notNull": true, "comment": "ok | unverified | incomplete" },
+        { "column_name": "included_record_ids", "type": "text", "notNull": true, "comment": "JSON array, stored as text — Data Store has no native array column." },
+        { "column_name": "calculated_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    }
+  ]
+}
