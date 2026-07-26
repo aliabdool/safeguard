@@ -1,5 +1,7 @@
-import { getDb } from "@/db";
-import { departments, profiles, properties } from "@/db/schema";
+import { headers } from "next/headers";
+
+import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { listDepartments, listProperties, listUsers } from "@/server/identity/catalyst-identity";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
 import { CapaForm } from "./capa-form";
@@ -11,12 +13,12 @@ export default async function NewCapaPage({
 }) {
   const { incidentId, sourceType } = await searchParams;
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
 
-  const [allProperties, allDepartments, allProfiles] = await Promise.all([
-    db.select({ id: properties.id, name: properties.name }).from(properties),
-    db.select({ id: departments.id, name: departments.name }).from(departments),
-    db.select({ id: profiles.id, fullName: profiles.fullName }).from(profiles),
+  const [allProperties, allDepartments, allUsers] = await Promise.all([
+    listProperties(catalystApp),
+    listDepartments(catalystApp),
+    listUsers(catalystApp),
   ]);
 
   const availableProperties = allProperties.filter((p) => ctx && hasPropertyAccess(ctx, p.id));
@@ -33,7 +35,7 @@ export default async function NewCapaPage({
       <CapaForm
         properties={availableProperties}
         departments={allDepartments}
-        users={allProfiles}
+        users={allUsers.map((u) => ({ id: u.id, fullName: u.fullName }))}
         defaultSourceId={incidentId}
         defaultSourceType={sourceType ?? (incidentId ? "incident" : undefined)}
       />

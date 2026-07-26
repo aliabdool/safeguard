@@ -1,12 +1,33 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
 
 import { CloseForm, VerifyForm } from "./verify-close-forms";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import { capaActions, capaVerifications, profiles } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
+
+interface CapaRow extends CatalystRow {
+  capa_number: string;
+  property_id: string;
+  department_id: string;
+  description: string;
+  source_type: string;
+  owner_id: string;
+  verifier_id: string;
+  due_date: string;
+  status: string;
+  priority: string;
+  root_cause: string;
+  corrective_action: string;
+  preventive_action: string;
+}
+
+interface VerificationRow extends CatalystRow {
+  outcome: string;
+  notes: string;
+  verified_at: string;
+}
 
 export default async function CapaDetailPage({
   params,
@@ -15,30 +36,35 @@ export default async function CapaDetailPage({
 }) {
   const { capaId } = await params;
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
 
-  const [capa] = await db
-    .select()
-    .from(capaActions)
-    .where(eq(capaActions.id, capaId))
-    .limit(1);
-  if (!capa || !ctx || !hasPropertyAccess(ctx, capa.propertyId)) {
+  const capaRows = (await datastore.table("CAPA").getRows({
+    criteria: `CAPA.ROWID == '${capaId}'`,
+    maxRows: 1,
+  })) as CapaRow[];
+  const capa = capaRows[0];
+  if (!capa || !ctx || !hasPropertyAccess(ctx, capa.property_id)) {
     notFound();
   }
 
-  const [[owner], [verifier], verifications] = await Promise.all([
-    db
-      .select({ fullName: profiles.fullName })
-      .from(profiles)
-      .where(eq(profiles.id, capa.ownerId)),
-    capa.verificationOwnerId
-      ? db
-          .select({ fullName: profiles.fullName })
-          .from(profiles)
-          .where(eq(profiles.id, capa.verificationOwnerId))
-      : Promise.resolve([{ fullName: null }]),
-    db.select().from(capaVerifications).where(eq(capaVerifications.capaId, capaId)),
+  const [ownerRows, verifierRows, verifications] = await Promise.all([
+    datastore.table("Users").getRows({
+      criteria: `Users.ROWID == '${capa.owner_id}'`,
+      maxRows: 1,
+    }) as Promise<Array<CatalystRow & { full_name: string }>>,
+    capa.verifier_id
+      ? (datastore.table("Users").getRows({
+          criteria: `Users.ROWID == '${capa.verifier_id}'`,
+          maxRows: 1,
+        }) as Promise<Array<CatalystRow & { full_name: string }>>)
+      : Promise.resolve([]),
+    datastore.table("CAPAVerification").getRows({
+      criteria: `CAPAVerification.capa_id == '${capaId}'`,
+    }) as Promise<VerificationRow[]>,
   ]);
+  const owner = ownerRows[0];
+  const verifier = verifierRows[0];
 
   const canVerify =
     capa.status === "open" ||
@@ -50,10 +76,10 @@ export default async function CapaDetailPage({
     <div className="flex max-w-2xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{capa.actionNumber}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{capa.capa_number}</h1>
           <p className="text-muted-foreground text-sm">
-            Source: {capa.sourceType.replace("_", " ")} · Owner: {owner?.fullName} · Verifier:{" "}
-            {verifier?.fullName ?? "—"}
+            Source: {capa.source_type.replace("_", " ")} · Owner: {owner?.full_name ?? "—"} ·
+            Verifier: {verifier?.full_name ?? "—"}
           </p>
         </div>
         <Badge>{capa.status.replace("_", " ")}</Badge>
@@ -65,24 +91,24 @@ export default async function CapaDetailPage({
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
           <p>{capa.description}</p>
-          {capa.rootCause ? (
+          {capa.root_cause ? (
             <p>
-              <span className="font-medium">Root cause:</span> {capa.rootCause}
+              <span className="font-medium">Root cause:</span> {capa.root_cause}
             </p>
           ) : null}
-          {capa.correctiveAction ? (
+          {capa.corrective_action ? (
             <p>
-              <span className="font-medium">Corrective action:</span> {capa.correctiveAction}
+              <span className="font-medium">Corrective action:</span> {capa.corrective_action}
             </p>
           ) : null}
-          {capa.preventiveAction ? (
+          {capa.preventive_action ? (
             <p>
-              <span className="font-medium">Preventive action:</span> {capa.preventiveAction}
+              <span className="font-medium">Preventive action:</span> {capa.preventive_action}
             </p>
           ) : null}
           <p>
             <span className="font-medium">Priority:</span> {capa.priority} ·{" "}
-            <span className="font-medium">Due:</span> {capa.dueDate}
+            <span className="font-medium">Due:</span> {capa.due_date}
           </p>
         </CardContent>
       </Card>
@@ -95,9 +121,9 @@ export default async function CapaDetailPage({
           {canVerify ? <VerifyForm capaId={capaId} /> : null}
           <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
             {verifications.map((v) => (
-              <li key={v.id}>
-                {v.outcome} — {new Date(v.verifiedAt).toLocaleString()}{" "}
-                {v.comment ? `(${v.comment})` : ""}
+              <li key={v.ROWID}>
+                {v.outcome} — {new Date(v.verified_at).toLocaleString()}{" "}
+                {v.notes ? `(${v.notes})` : ""}
               </li>
             ))}
           </ul>

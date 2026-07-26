@@ -1,5 +1,5 @@
 {
-  "_comment": "CAPA (corrective/preventive action) + verification tables. Phase 6. owner_id and verifier_id must always differ — enforced in functions/shared/pure/capa-workflow.ts (isValidOwnerVerifierPair) before any write, not just assumed from the schema. CAPAVerification is its own table, not columns on CAPA, mirroring the IncidentInvestigation split from Phase 5 — this is what lets the Group/Hotel/Department Manager dashboards query 'CAPA awaiting verification' independently of 'CAPA awaiting owner update' (docs/2026-07-zoho-catalyst-access-and-dashboard-model.md §6).",
+  "_comment": "CAPA (corrective/preventive action) + verification tables. Phase 6. owner_id and verifier_id must always differ — enforced in functions/shared/pure/capa-workflow.ts (isValidOwnerVerifierPair) before any write, not just assumed from the schema. CAPAVerification is its own table, not columns on CAPA, mirroring the IncidentInvestigation split from Phase 5 — this is what lets the Group/Hotel/Department Manager dashboards query 'CAPA awaiting verification' independently of 'CAPA awaiting owner update' (docs/2026-07-zoho-catalyst-access-and-dashboard-model.md §6). CAPA.priority, root_cause, corrective_action, preventive_action, hierarchy_of_control, cost, required_evidence, effectiveness_review_date, final_approved_by and final_approved_at were added during the Supabase-to-Catalyst migration (Phase C, apps/web capa module) — they existed on Postgres's capa_actions table and are used by the CAPA create/detail UI, but were missing from the original Phase 6 port.",
   "tables": [
     {
       "table_name": "CAPA",
@@ -10,12 +10,22 @@
         { "column_name": "department_id", "type": "lookup", "references": "Departments", "nullable": true, "comment": "Nullable — not every CAPA is department-scoped. Required for the Department Manager Dashboard's 'assigned CAPA' row." },
         { "column_name": "title", "type": "text", "notNull": true },
         { "column_name": "description", "type": "text", "nullable": true },
-        { "column_name": "source_type", "type": "text", "notNull": true, "comment": "incident | audit_finding | control_gap — what this CAPA closes out. Used for drill-down and framework linkage." },
+        { "column_name": "source_type", "type": "text", "notNull": true, "comment": "incident | audit_finding | legal_gap | inspection | management_review — what this CAPA closes out. Used for drill-down and framework linkage. (Widened from the original incident | audit_finding | control_gap comment during the Supabase-to-Catalyst migration to match the full capa_source_type enum apps/web's CAPA form actually writes — see apps/web/src/db/schema/_enums.ts.)" },
         { "column_name": "source_id", "type": "text", "nullable": true, "comment": "ROWID of the originating Incidents / AuditFindings / CriticalGaps row." },
         { "column_name": "owner_id", "type": "lookup", "references": "Users", "notNull": true, "comment": "Must differ from verifier_id — see isValidOwnerVerifierPair()." },
         { "column_name": "verifier_id", "type": "lookup", "references": "Users", "notNull": true, "comment": "Must differ from owner_id — see isValidOwnerVerifierPair()." },
         { "column_name": "due_date", "type": "date", "notNull": true },
         { "column_name": "status", "type": "text", "notNull": true, "default": "open", "comment": "open | in_progress | pending_verification | verified | closed — validated against isValidCapaStatusTransition() in capa-workflow.ts." },
+        { "column_name": "priority", "type": "text", "notNull": true, "default": "medium", "comment": "low | medium | high | critical. Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; present on capa_actions.priority in the Postgres schema and used by the CAPA list/detail/create UI." },
+        { "column_name": "root_cause", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.root_cause." },
+        { "column_name": "corrective_action", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.corrective_action." },
+        { "column_name": "preventive_action", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.preventive_action." },
+        { "column_name": "hierarchy_of_control", "type": "text", "nullable": true, "comment": "elimination | substitution | engineering | administrative | ppe. Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.hierarchy_of_control." },
+        { "column_name": "cost", "type": "double", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.cost (numeric(12,2) in Postgres)." },
+        { "column_name": "required_evidence", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.required_evidence." },
+        { "column_name": "effectiveness_review_date", "type": "date", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.effectiveness_review_date." },
+        { "column_name": "final_approved_by", "type": "lookup", "references": "Users", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.final_approved_by. Set on closeCapaAction; must differ from owner_id (the owner cannot give their own final closure approval)." },
+        { "column_name": "final_approved_at", "type": "datetime", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 6 port; ported from capa_actions.final_approved_at." },
         { "column_name": "created_by", "type": "lookup", "references": "Users", "notNull": true },
         { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
         { "column_name": "updated_at", "type": "datetime", "notNull": true, "default": "now" }
@@ -40,7 +50,7 @@
       "columns": [
         { "column_name": "capa_id", "type": "lookup", "references": "CAPA", "notNull": true },
         { "column_name": "verifier_id", "type": "lookup", "references": "Users", "notNull": true },
-        { "column_name": "outcome", "type": "text", "notNull": true, "comment": "verified | rejected" },
+        { "column_name": "outcome", "type": "text", "notNull": true, "comment": "effective | not_effective — matches Postgres's capa_verification_outcome enum and apps/web's CAPA verify form; corrected during the Supabase-to-Catalyst migration from this column's original 'verified | rejected' comment, which didn't match what the app actually writes." },
         { "column_name": "notes", "type": "text", "nullable": true },
         { "column_name": "verified_at", "type": "datetime", "notNull": true, "default": "now" }
       ]
