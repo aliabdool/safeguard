@@ -1,16 +1,18 @@
-import { getDb } from "@/db";
-import { departments, properties } from "@/db/schema";
+import { headers } from "next/headers";
+
+import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { listDepartments, listProperties } from "@/server/identity/catalyst-identity";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
 import { IncidentForm } from "./incident-form";
 
 export default async function NewIncidentPage() {
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
 
   const [allProperties, allDepartments] = await Promise.all([
-    db.select({ id: properties.id, name: properties.name }).from(properties),
-    db.select({ id: departments.id, name: departments.name }).from(departments),
+    listProperties(catalystApp),
+    listDepartments(catalystApp),
   ]);
 
   const availableProperties = allProperties.filter((p) => ctx && hasPropertyAccess(ctx, p.id));

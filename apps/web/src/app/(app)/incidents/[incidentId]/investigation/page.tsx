@@ -1,5 +1,5 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
 
 import {
   ApproveInvestigationForm,
@@ -11,17 +11,44 @@ import {
 } from "./investigation-forms";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import {
-  incidents,
-  investigationApprovals,
-  investigationCauses,
-  investigationFiveWhys,
-  investigationWitnesses,
-  investigations,
-  profiles,
-} from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { listUsers } from "@/server/identity/catalyst-identity";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
+
+interface IncidentRow extends CatalystRow {
+  incident_number: string;
+  property_id: string;
+}
+
+interface InvestigationRow extends CatalystRow {
+  incident_id: string;
+  event_reconstruction: string;
+  status: string;
+}
+
+interface CauseRow extends CatalystRow {
+  cause_type: string;
+  category: string;
+  description: string;
+}
+
+interface FiveWhyRow extends CatalystRow {
+  sequence: string;
+  question: string;
+  answer: string;
+}
+
+interface WitnessRow extends CatalystRow {
+  name: string;
+  role: string;
+  statement: string;
+}
+
+interface ApprovalRow extends CatalystRow {
+  decision: string;
+  comment: string;
+  decided_at: string;
+}
 
 export default async function InvestigationPage({
   params,
@@ -30,26 +57,26 @@ export default async function InvestigationPage({
 }) {
   const { incidentId } = await params;
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
 
-  const [incident] = await db
-    .select()
-    .from(incidents)
-    .where(eq(incidents.id, incidentId))
-    .limit(1);
-  if (!incident || !ctx || !hasPropertyAccess(ctx, incident.propertyId)) {
+  const incidentRows = (await datastore.table("Incidents").getRows({
+    criteria: `Incidents.ROWID == '${incidentId}'`,
+    maxRows: 1,
+  })) as IncidentRow[];
+  const incident = incidentRows[0];
+  if (!incident || !ctx || !hasPropertyAccess(ctx, incident.property_id)) {
     notFound();
   }
 
-  const [investigation] = await db
-    .select()
-    .from(investigations)
-    .where(eq(investigations.incidentId, incidentId))
-    .limit(1);
+  const investigationRows = (await datastore.table("IncidentInvestigation").getRows({
+    criteria: `IncidentInvestigation.incident_id == '${incidentId}'`,
+    maxRows: 1,
+  })) as InvestigationRow[];
+  const investigation = investigationRows[0];
 
-  const candidates = await db
-    .select({ id: profiles.id, fullName: profiles.fullName })
-    .from(profiles);
+  const users = await listUsers(catalystApp);
+  const candidates = users.map((u) => ({ id: u.id, fullName: u.fullName }));
 
   if (!investigation) {
     return (
@@ -68,24 +95,28 @@ export default async function InvestigationPage({
   }
 
   const [causes, fiveWhys, witnesses, approvals] = await Promise.all([
-    db
-      .select()
-      .from(investigationCauses)
-      .where(eq(investigationCauses.investigationId, investigation.id)),
-    db
-      .select()
-      .from(investigationFiveWhys)
-      .where(eq(investigationFiveWhys.investigationId, investigation.id))
-      .orderBy(asc(investigationFiveWhys.sequence)),
-    db
-      .select()
-      .from(investigationWitnesses)
-      .where(eq(investigationWitnesses.investigationId, investigation.id)),
-    db
-      .select()
-      .from(investigationApprovals)
-      .where(eq(investigationApprovals.investigationId, investigation.id)),
+    datastore
+      .table("IncidentRootCauses")
+      .getRows({ criteria: `IncidentRootCauses.investigation_id == '${investigation.ROWID}'` }) as Promise<
+      CauseRow[]
+    >,
+    datastore
+      .table("IncidentFiveWhys")
+      .getRows({ criteria: `IncidentFiveWhys.investigation_id == '${investigation.ROWID}'` }) as Promise<
+      FiveWhyRow[]
+    >,
+    datastore
+      .table("IncidentWitnesses")
+      .getRows({ criteria: `IncidentWitnesses.investigation_id == '${investigation.ROWID}'` }) as Promise<
+      WitnessRow[]
+    >,
+    datastore
+      .table("InvestigationApprovals")
+      .getRows({ criteria: `InvestigationApprovals.investigation_id == '${investigation.ROWID}'` }) as Promise<
+      ApprovalRow[]
+    >,
   ]);
+  fiveWhys.sort((a, b) => Number(a.sequence) - Number(b.sequence));
 
   const nextWhySequence = fiveWhys.length + 1;
 
@@ -93,7 +124,7 @@ export default async function InvestigationPage({
     <div className="flex max-w-3xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Investigation — {incident.incidentNumber}
+          Investigation — {incident.incident_number}
         </h1>
         <Badge>{investigation.status.replace("_", " ")}</Badge>
       </div>
@@ -104,9 +135,9 @@ export default async function InvestigationPage({
         </CardHeader>
         <CardContent>
           <CompleteInvestigationForm
-            investigationId={investigation.id}
+            investigationId={investigation.ROWID}
             incidentId={incidentId}
-            defaultValue={investigation.eventReconstruction}
+            defaultValue={investigation.event_reconstruction}
           />
         </CardContent>
       </Card>
@@ -116,11 +147,11 @@ export default async function InvestigationPage({
           <CardTitle className="text-base">Immediate &amp; root causes</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <CauseForm investigationId={investigation.id} incidentId={incidentId} />
+          <CauseForm investigationId={investigation.ROWID} incidentId={incidentId} />
           <ul className="flex flex-col gap-1 text-sm">
             {causes.map((c) => (
-              <li key={c.id}>
-                <Badge variant="outline">{c.causeType}</Badge>{" "}
+              <li key={c.ROWID}>
+                <Badge variant="outline">{c.cause_type}</Badge>{" "}
                 {c.category ? `${c.category} — ` : ""}
                 {c.description}
               </li>
@@ -135,14 +166,14 @@ export default async function InvestigationPage({
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {fiveWhys.map((w) => (
-            <div key={w.id} className="text-sm">
+            <div key={w.ROWID} className="text-sm">
               <span className="font-medium">Why #{w.sequence}:</span> {w.question} —{" "}
-              {w.answer ?? "(no answer)"}
+              {w.answer || "(no answer)"}
             </div>
           ))}
           {nextWhySequence <= 5 ? (
             <FiveWhyForm
-              investigationId={investigation.id}
+              investigationId={investigation.ROWID}
               incidentId={incidentId}
               sequence={nextWhySequence}
             />
@@ -155,11 +186,11 @@ export default async function InvestigationPage({
           <CardTitle className="text-base">Witnesses</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <WitnessForm investigationId={investigation.id} incidentId={incidentId} />
+          <WitnessForm investigationId={investigation.ROWID} incidentId={incidentId} />
           <ul className="flex flex-col gap-1 text-sm">
             {witnesses.map((w) => (
-              <li key={w.id}>
-                {w.name} {w.role ? `(${w.role})` : ""} — {w.statement ?? "no statement"}
+              <li key={w.ROWID}>
+                {w.name} {w.role ? `(${w.role})` : ""} — {w.statement || "no statement"}
               </li>
             ))}
           </ul>
@@ -171,14 +202,11 @@ export default async function InvestigationPage({
           <CardTitle className="text-base">Approval</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <ApproveInvestigationForm
-            investigationId={investigation.id}
-            incidentId={incidentId}
-          />
+          <ApproveInvestigationForm investigationId={investigation.ROWID} incidentId={incidentId} />
           <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
             {approvals.map((a) => (
-              <li key={a.id}>
-                {a.decision} — {new Date(a.decidedAt).toLocaleString()}{" "}
+              <li key={a.ROWID}>
+                {a.decision} — {new Date(a.decided_at).toLocaleString()}{" "}
                 {a.comment ? `(${a.comment})` : ""}
               </li>
             ))}

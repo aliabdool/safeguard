@@ -1,5 +1,5 @@
+import { headers } from "next/headers";
 import Link from "next/link";
-import { desc, inArray } from "drizzle-orm";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getDb } from "@/db";
-import { departments, incidents, properties } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
+import { listDepartments, listProperties } from "@/server/identity/catalyst-identity";
 
 const STATUS_VARIANT: Record<
   string,
@@ -26,13 +26,24 @@ const STATUS_VARIANT: Record<
   closed: "success",
 };
 
+interface IncidentRow extends CatalystRow {
+  incident_number: string;
+  property_id: string;
+  department_id: string;
+  occurred_at: string;
+  incident_type: string;
+  actual_severity: string;
+  is_high_potential: string;
+  status: string;
+}
+
 export default async function IncidentsPage() {
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
 
   const [allProperties, allDepartments] = await Promise.all([
-    db.select({ id: properties.id, name: properties.name }).from(properties),
-    db.select({ id: departments.id, name: departments.name }).from(departments),
+    listProperties(catalystApp),
+    listDepartments(catalystApp),
   ]);
 
   const visiblePropertyIds = allProperties
@@ -42,15 +53,14 @@ export default async function IncidentsPage() {
   const propertyName = new Map(allProperties.map((p) => [p.id, p.name]));
   const departmentName = new Map(allDepartments.map((d) => [d.id, d.name]));
 
-  const rows =
+  const rows: IncidentRow[] =
     visiblePropertyIds.length === 0
       ? []
-      : await db
-          .select()
-          .from(incidents)
-          .where(inArray(incidents.propertyId, visiblePropertyIds))
-          .orderBy(desc(incidents.occurredAt))
-          .limit(100);
+      : ((await catalystApp.datastore().table("Incidents").getRows({
+          criteria: `Incidents.property_id in (${visiblePropertyIds.map((id) => `'${id}'`).join(", ")})`,
+        })) as IncidentRow[])
+          .sort((a, b) => (a.occurred_at < b.occurred_at ? 1 : -1))
+          .slice(0, 100);
 
   return (
     <div className="flex flex-col gap-6">
@@ -86,21 +96,21 @@ export default async function IncidentsPage() {
           </TableHeader>
           <TableBody>
             {rows.map((incident) => (
-              <TableRow key={incident.id}>
+              <TableRow key={incident.ROWID}>
                 <TableCell>
                   <Link
-                    href={`/incidents/${incident.id}`}
+                    href={`/incidents/${incident.ROWID}`}
                     className="font-medium underline underline-offset-4"
                   >
-                    {incident.incidentNumber}
+                    {incident.incident_number}
                   </Link>
                 </TableCell>
-                <TableCell>{propertyName.get(incident.propertyId) ?? "—"}</TableCell>
-                <TableCell>{departmentName.get(incident.departmentId) ?? "—"}</TableCell>
-                <TableCell>{new Date(incident.occurredAt).toLocaleString()}</TableCell>
-                <TableCell>{incident.incidentType}</TableCell>
+                <TableCell>{propertyName.get(incident.property_id) ?? "—"}</TableCell>
+                <TableCell>{departmentName.get(incident.department_id) ?? "—"}</TableCell>
+                <TableCell>{new Date(incident.occurred_at).toLocaleString()}</TableCell>
+                <TableCell>{incident.incident_type}</TableCell>
                 <TableCell>
-                  {incident.actualSeverity}/5{incident.isHighPotential ? " · HiPo" : ""}
+                  {incident.actual_severity}/5{incident.is_high_potential === "true" ? " · HiPo" : ""}
                 </TableCell>
                 <TableCell>
                   <Badge variant={STATUS_VARIANT[incident.status] ?? "default"}>

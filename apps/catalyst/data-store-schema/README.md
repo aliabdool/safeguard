@@ -29,7 +29,10 @@ deliverable) for the enforcement pattern once it lands.
 - `02-master-data.json` — Properties, Departments, IncidentTypes, InjuryMechanisms,
   RootCauseCategories, Frameworks, Controls, KPIDefinitions
 - `03-incidents.json` — Incidents, IncidentPersons, IncidentWitnesses, IncidentInvestigation,
-  IncidentFiveWhys, IncidentRootCauses, IncidentOSHReportability, MedicalNotes
+  IncidentFiveWhys, IncidentRootCauses, InvestigationApprovals, IncidentAttachments,
+  IncidentNotifications, IncidentOSHReportability, MedicalNotes (the three approvals/attachments/
+  notifications tables, and MedicalNotes' treatment_details/practitioner_name columns, were added
+  during the Supabase-to-Catalyst migration — missing from the original Phase 5 port)
 - `04-capa.json` — CAPA, CAPAProgressNotes, CAPAVerification (owner_id/verifier_id must always
   differ — enforced in `functions/shared/pure/capa-workflow.ts`)
 - `05-documents.json` — Documents, DocumentVersions, DocumentApprovals, DocumentEvidenceLinks

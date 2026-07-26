@@ -1,12 +1,17 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
 
 import { MedicalRecordForm } from "./medical-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import { incidents, medicalRecords } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { AuthError, requireMedicalPermission } from "@/server/permissions";
+
+interface MedicalNoteRow extends CatalystRow {
+  clinical_notes: string;
+  treatment_details: string;
+  practitioner_name: string;
+}
 
 export default async function MedicalRecordsPage({
   params,
@@ -34,20 +39,19 @@ export default async function MedicalRecordsPage({
     throw err;
   }
 
-  const db = getDb();
-  const [incident] = await db
-    .select({ id: incidents.id })
-    .from(incidents)
-    .where(eq(incidents.id, incidentId))
-    .limit(1);
-  if (!incident) {
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const incidentRows = await datastore
+    .table("Incidents")
+    .getRows({ criteria: `Incidents.ROWID == '${incidentId}'`, maxRows: 1 });
+  if (!incidentRows[0]) {
     notFound();
   }
 
-  const records = await db
-    .select()
-    .from(medicalRecords)
-    .where(eq(medicalRecords.incidentId, incidentId));
+  const records = (await datastore
+    .table("MedicalNotes")
+    .getRows({ criteria: `MedicalNotes.incident_id == '${incidentId}'` })) as MedicalNoteRow[];
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -75,13 +79,13 @@ export default async function MedicalRecordsPage({
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {records.map((r) => (
-              <div key={r.id} className="rounded-md border p-3 text-sm">
-                <p>{r.clinicalNotes}</p>
-                {r.treatmentDetails ? (
-                  <p className="text-muted-foreground">Treatment: {r.treatmentDetails}</p>
+              <div key={r.ROWID} className="rounded-md border p-3 text-sm">
+                <p>{r.clinical_notes}</p>
+                {r.treatment_details ? (
+                  <p className="text-muted-foreground">Treatment: {r.treatment_details}</p>
                 ) : null}
-                {r.practitionerName ? (
-                  <p className="text-muted-foreground">Practitioner: {r.practitionerName}</p>
+                {r.practitioner_name ? (
+                  <p className="text-muted-foreground">Practitioner: {r.practitioner_name}</p>
                 ) : null}
               </div>
             ))}

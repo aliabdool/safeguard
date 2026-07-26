@@ -20,10 +20,12 @@
         { "column_name": "actual_severity", "type": "bigint", "notNull": true },
         { "column_name": "potential_severity", "type": "bigint", "notNull": true },
         { "column_name": "is_high_potential", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "treatment", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — present on apps/web's incidents.treatment, missing from the original Phase 5 port." },
         { "column_name": "hospital_referral", "type": "boolean", "notNull": true, "default": false, "comment": "INDEPENDENT of reportable_status on IncidentOSHReportability — never derive one from the other. See incident-workflow.ts defaultOshReportableStatus()." },
         { "column_name": "lost_workdays", "type": "bigint", "notNull": true, "default": 0 },
         { "column_name": "restricted_duty_days", "type": "bigint", "notNull": true, "default": 0 },
         { "column_name": "incident_cost", "type": "decimal", "notNull": true, "default": 0 },
+        { "column_name": "currency", "type": "text", "notNull": true, "default": "MUR", "comment": "Added during the Supabase-to-Catalyst migration — missing from the original Phase 5 port." },
         { "column_name": "business_interruption_days", "type": "bigint", "notNull": true, "default": 0 },
         { "column_name": "immediate_actions", "type": "text", "nullable": true },
         { "column_name": "status", "type": "text", "notNull": true, "default": "reported", "comment": "reported | investigating | corrective_action | verifying | closed — validated against isValidStatusTransition() in incident-workflow.ts." },
@@ -88,6 +90,41 @@
       ]
     },
     {
+      "table_name": "InvestigationApprovals",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — ported from apps/web investigation_approvals, missing from the original Phase 5 port.",
+      "columns": [
+        { "column_name": "investigation_id", "type": "lookup", "references": "IncidentInvestigation", "notNull": true },
+        { "column_name": "approver_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "decision", "type": "text", "notNull": true, "comment": "approved | rejected" },
+        { "column_name": "comment", "type": "text", "nullable": true },
+        { "column_name": "decided_at", "type": "datetime", "notNull": true, "default": "now" }
+      ]
+    },
+    {
+      "table_name": "IncidentAttachments",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — ported from apps/web incident_attachments, missing from the original Phase 5 port. file_id references Files (13-files.json), which in turn references Catalyst File Store.",
+      "columns": [
+        { "column_name": "incident_id", "type": "lookup", "references": "Incidents", "notNull": true },
+        { "column_name": "file_id", "type": "lookup", "references": "Files", "notNull": true },
+        { "column_name": "is_photo", "type": "boolean", "notNull": true, "default": false },
+        { "column_name": "caption", "type": "text", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "IncidentNotifications",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — ported from apps/web incident_notifications, missing from the original Phase 5 port. Statutory/authority notifications logged manually — distinct from the Notifications table (12-notifications.json), which is in-app user notifications.",
+      "columns": [
+        { "column_name": "incident_id", "type": "lookup", "references": "Incidents", "notNull": true },
+        { "column_name": "notified_party", "type": "text", "notNull": true },
+        { "column_name": "method", "type": "text", "nullable": true },
+        { "column_name": "notified_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "notified_by", "type": "lookup", "references": "Users", "notNull": true }
+      ]
+    },
+    {
       "table_name": "IncidentOSHReportability",
       "scope": "Org",
       "comment": "The statutory-notification DETERMINATION, as its own record — separate from Incidents.hospital_referral by design (brief requirement #3 / test case). One row per incident; who decided and when is captured explicitly rather than just overwriting a status column, so the determination itself is auditable.",
@@ -110,6 +147,8 @@
         { "column_name": "incident_id", "type": "lookup", "references": "Incidents", "notNull": true },
         { "column_name": "incident_person_id", "type": "lookup", "references": "IncidentPersons", "nullable": true },
         { "column_name": "clinical_notes", "type": "text", "notNull": true },
+        { "column_name": "treatment_details", "type": "text", "nullable": true },
+        { "column_name": "practitioner_name", "type": "text", "nullable": true },
         { "column_name": "created_by", "type": "lookup", "references": "Users", "notNull": true },
         { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now" },
         { "column_name": "updated_by", "type": "lookup", "references": "Users", "nullable": true },

@@ -1,17 +1,17 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
-import { getDb } from "@/db";
-import { medicalRecords } from "@/db/schema";
+import { catalystAppFromHeaders } from "@/lib/catalyst/app";
 import { writeAuditLog } from "@/server/audit-log";
 import { requireMedicalPermission } from "@/server/permissions";
 
 const createSchema = z.object({
-  incidentId: z.string().uuid(),
-  personReference: z.string().uuid().optional().or(z.literal("")),
+  incidentId: z.string(),
+  personReference: z.string().optional().or(z.literal("")),
   clinicalNotes: z.string().min(1, "Clinical notes are required."),
   treatmentDetails: z.string().optional(),
   practitionerName: z.string().optional(),
@@ -19,9 +19,10 @@ const createSchema = z.object({
 
 /**
  * Every write here requires an explicit medical-data permission grant — see
- * requireMedicalPermission() and docs/security-model.md §3.3. RLS independently enforces the
- * same rule at the database layer (medical_records_write policy), so even if this check were
- * ever bypassed the insert would still be rejected.
+ * requireMedicalPermission() and docs/security-model.md §3.3. Catalyst's Data Store has no RLS
+ * equivalent (see apps/catalyst/data-store-schema/README.md), so this application-layer check is
+ * now the sole enforcement layer — there is no independent database-level backstop the way
+ * Postgres RLS provided.
  */
 export async function createMedicalRecordAction(
   _prevState: ActionResult,
@@ -39,14 +40,14 @@ export async function createMedicalRecordAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid medical record." };
   }
 
-  const db = getDb();
-  await db.insert(medicalRecords).values({
-    incidentId: parsed.data.incidentId,
-    personReference: parsed.data.personReference || null,
-    clinicalNotes: parsed.data.clinicalNotes,
-    treatmentDetails: parsed.data.treatmentDetails ?? null,
-    practitionerName: parsed.data.practitionerName ?? null,
-    createdBy: ctx.userId,
+  const catalystApp = catalystAppFromHeaders(await headers());
+  await catalystApp.datastore().table("MedicalNotes").insertRow({
+    incident_id: parsed.data.incidentId,
+    incident_person_id: parsed.data.personReference || null,
+    clinical_notes: parsed.data.clinicalNotes,
+    treatment_details: parsed.data.treatmentDetails ?? null,
+    practitioner_name: parsed.data.practitionerName ?? null,
+    created_by: ctx.userId,
   });
 
   // Deliberately no clinical content in the audit log — only that an access/write event
@@ -54,7 +55,7 @@ export async function createMedicalRecordAction(
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "medical_record_accessed",
-    entityType: "medical_records",
+    entityType: "MedicalNotes",
     entityId: parsed.data.incidentId,
     reason: "created",
   });

@@ -1,20 +1,12 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
-import { getDb } from "@/db";
-import {
-  capaActions,
-  incidentAttachments,
-  incidentNotifications,
-  incidentPersons,
-  incidents,
-  properties,
-} from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextIncidentNumber } from "@/server/incidents/number";
 import { personDetailsSchema } from "@/server/incidents/person-details";
@@ -24,7 +16,6 @@ import {
   requireActiveUser,
   requireRole,
 } from "@/server/permissions";
-import { confirmUpload, createUploadUrl, FileValidationError } from "@/server/storage";
 
 const INJURY_MECHANISMS = [
   "slip_trip_fall_same_level",
@@ -54,8 +45,8 @@ const REPORTER_ROLES = [
 ] as const;
 
 const createIncidentSchema = z.object({
-  propertyId: z.string().uuid(),
-  departmentId: z.string().uuid(),
+  propertyId: z.string(),
+  departmentId: z.string(),
   locationDetail: z.string().optional(),
   occurredAt: z.string().min(1, "Date/time of occurrence is required."),
   personType: z.enum([
@@ -173,8 +164,7 @@ export async function createIncidentAction(
       };
     }
   } else if (data.personType === "trainee") {
-    const touched =
-      data.traineeInstitution || data.traineeSupervisor || data.traineeDepartment;
+    const touched = data.traineeInstitution || data.traineeSupervisor || data.traineeDepartment;
     if (touched) {
       rawPersonDetails = {
         trainingInstitution: data.traineeInstitution,
@@ -225,49 +215,57 @@ export async function createIncidentAction(
     return { error: "No access to this department." };
   }
 
-  const db = getDb();
-  const [property] = await db
-    .select({ code: properties.code })
-    .from(properties)
-    .where(eq(properties.id, data.propertyId))
-    .limit(1);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const propertyRows = (await datastore
+    .table("Properties")
+    .getRows({ criteria: `Properties.ROWID == '${data.propertyId}'`, maxRows: 1 })) as Array<
+    CatalystRow & { code: string }
+  >;
+  const property = propertyRows[0];
   if (!property) {
     return { error: "Unknown property." };
   }
 
+  let injuryMechanismId: string | null = null;
+  if (data.injuryMechanism) {
+    const mechanismRows = (await datastore.table("InjuryMechanisms").getRows({
+      criteria: `InjuryMechanisms.code == '${data.injuryMechanism}'`,
+      maxRows: 1,
+    })) as CatalystRow[];
+    injuryMechanismId = mechanismRows[0]?.ROWID ?? null;
+  }
+
   let incidentId: string | undefined;
   for (let attempt = 0; attempt < 3 && !incidentId; attempt++) {
-    const incidentNumber = await nextIncidentNumber(property.code, data.propertyId);
+    const incidentNumber = await nextIncidentNumber(catalystApp, property.code, data.propertyId);
     try {
-      const [created] = await db
-        .insert(incidents)
-        .values({
-          incidentNumber,
-          propertyId: data.propertyId,
-          departmentId: data.departmentId,
-          locationDetail: data.locationDetail ?? null,
-          occurredAt: new Date(data.occurredAt),
-          reportedBy: ctx.userId,
-          personType: data.personType,
-          incidentType: data.incidentType,
-          injuryMechanism: data.injuryMechanism || null,
-          injuryType: data.injuryType ?? null,
-          bodyPart: data.bodyPart ?? null,
-          outcome: data.outcome,
-          actualSeverity: data.actualSeverity,
-          potentialSeverity: data.potentialSeverity,
-          isHighPotential: data.isHighPotential,
-          treatment: data.treatment ?? null,
-          hospitalReferral: data.hospitalReferral,
-          reportableStatus: data.reportableStatus,
-          lostWorkdays: data.lostWorkdays,
-          restrictedDutyDays: data.restrictedDutyDays,
-          incidentCost: String(data.incidentCost),
-          businessInterruptionDays: data.businessInterruptionDays,
-          immediateActions: data.immediateActions ?? null,
-        })
-        .returning({ id: incidents.id });
-      incidentId = created!.id;
+      const created = await datastore.table("Incidents").insertRow({
+        incident_number: incidentNumber,
+        property_id: data.propertyId,
+        department_id: data.departmentId,
+        location_detail: data.locationDetail ?? null,
+        occurred_at: new Date(data.occurredAt).toISOString(),
+        reported_by: ctx.userId,
+        person_event_type: data.personType,
+        incident_type: data.incidentType,
+        injury_mechanism_id: injuryMechanismId,
+        injury_type: data.injuryType ?? null,
+        body_part: data.bodyPart ?? null,
+        outcome: data.outcome,
+        actual_severity: data.actualSeverity,
+        potential_severity: data.potentialSeverity,
+        is_high_potential: data.isHighPotential,
+        treatment: data.treatment ?? null,
+        hospital_referral: data.hospitalReferral,
+        lost_workdays: data.lostWorkdays,
+        restricted_duty_days: data.restrictedDutyDays,
+        incident_cost: data.incidentCost,
+        business_interruption_days: data.businessInterruptionDays,
+        immediate_actions: data.immediateActions ?? null,
+      });
+      incidentId = String(created.ROWID);
     } catch (err) {
       // Unique-violation race on incident_number under concurrent creation — retry with a
       // freshly computed number. Any other error propagates.
@@ -278,18 +276,26 @@ export async function createIncidentAction(
     return { error: "Could not allocate an incident number. Try again." };
   }
 
-  await db.insert(incidentPersons).values({
-    incidentId,
-    personType: data.personType,
-    fullName: data.personName ?? null,
-    isPrimary: true,
-    details: personDetails,
+  await datastore.table("IncidentPersons").insertRow({
+    incident_id: incidentId,
+    person_event_type: data.personType,
+    full_name: data.personName ?? null,
+    is_primary: true,
+    details_json: personDetails != null ? JSON.stringify(personDetails) : null,
+  });
+
+  // The statutory-notification determination is its own table in Catalyst (deliberately separate
+  // from hospital_referral — see 03-incidents.json) — the reporter's initial call is recorded here
+  // rather than as a column on Incidents.
+  await datastore.table("IncidentOSHReportability").insertRow({
+    incident_id: incidentId,
+    reportable_status: data.reportableStatus,
   });
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "record_created",
-    entityType: "incidents",
+    entityType: "Incidents",
     entityId: incidentId,
     propertyId: data.propertyId,
     departmentId: data.departmentId,
@@ -300,92 +306,40 @@ export async function createIncidentAction(
   redirect(`/incidents/${incidentId}`);
 }
 
-const attachmentSchema = z.object({
-  incidentId: z.string().uuid(),
-  filename: z.string().min(1),
-  mimeType: z.string().min(1),
-  sizeBytes: z.coerce.number().int().positive(),
-  isPhoto: z.boolean(),
-});
-
-export async function requestIncidentAttachmentUploadAction(input: {
+/**
+ * TODO(Phase D): file upload still targeted Supabase Storage and a Postgres files.id — that ID
+ * can't be stored in Catalyst's IncidentAttachments.file_id (which references Catalyst's own Files
+ * table, 13-files.json), and the Postgres incident_attachments table's FK to incidents.id no
+ * longer resolves now that incidents are created in Catalyst, not Postgres. Wiring this up
+ * correctly requires the storage migration to Catalyst File Store first; until then this action
+ * intentionally errors rather than silently writing a dangling/wrong reference. Signature kept
+ * identical to the pre-migration version so attachment-upload.tsx still typechecks unchanged.
+ */
+export async function requestIncidentAttachmentUploadAction(_input: {
   incidentId: string;
   filename: string;
   mimeType: string;
   sizeBytes: number;
   isPhoto: boolean;
-}) {
-  const ctx = await requireActiveUser();
-  const parsed = attachmentSchema.parse(input);
-
-  const db = getDb();
-  const [incident] = await db
-    .select({ propertyId: incidents.propertyId, departmentId: incidents.departmentId })
-    .from(incidents)
-    .where(eq(incidents.id, parsed.incidentId))
-    .limit(1);
-  if (!incident) {
-    throw new Error("Unknown incident.");
-  }
-  if (!hasPropertyAccess(ctx, incident.propertyId)) {
-    throw new Error("No access to this incident.");
-  }
-
-  try {
-    const upload = await createUploadUrl({
-      bucket: "incident-evidence",
-      filename: parsed.filename,
-      mimeType: parsed.mimeType,
-      sizeBytes: parsed.sizeBytes,
-      uploadedBy: ctx.userId,
-    });
-    return upload;
-  } catch (err) {
-    if (err instanceof FileValidationError) {
-      throw new Error(err.message);
-    }
-    throw err;
-  }
+}): Promise<{ fileId: string; storagePath: string; token: string }> {
+  throw new Error(
+    "Photo/document upload is temporarily unavailable during the migration to Zoho Catalyst — file storage has not moved over yet.",
+  );
 }
 
-const confirmAttachmentSchema = z.object({
-  incidentId: z.string().uuid(),
-  fileId: z.string().uuid(),
-  isPhoto: z.boolean(),
-  caption: z.string().optional(),
-});
-
-export async function confirmIncidentAttachmentAction(input: {
+export async function confirmIncidentAttachmentAction(_input: {
   incidentId: string;
   fileId: string;
   isPhoto: boolean;
   caption?: string;
-}) {
-  const ctx = await requireActiveUser();
-  const parsed = confirmAttachmentSchema.parse(input);
-
-  await confirmUpload(parsed.fileId);
-
-  const db = getDb();
-  await db.insert(incidentAttachments).values({
-    incidentId: parsed.incidentId,
-    fileId: parsed.fileId,
-    isPhoto: parsed.isPhoto,
-    caption: parsed.caption ?? null,
-  });
-
-  await writeAuditLog({
-    actorId: ctx.userId,
-    eventType: "document_uploaded",
-    entityType: "incident_attachments",
-    entityId: parsed.fileId,
-  });
-
-  revalidatePath(`/incidents/${parsed.incidentId}`);
+}): Promise<void> {
+  throw new Error(
+    "Photo/document upload is temporarily unavailable during the migration to Zoho Catalyst — file storage has not moved over yet.",
+  );
 }
 
 const notifySchema = z.object({
-  incidentId: z.string().uuid(),
+  incidentId: z.string(),
   notifiedParty: z.string().min(1),
   method: z.string().optional(),
 });
@@ -404,21 +358,23 @@ export async function recordIncidentNotificationAction(
     return { error: "Notified party is required." };
   }
 
-  const db = getDb();
-  const [incident] = await db
-    .select({ propertyId: incidents.propertyId })
-    .from(incidents)
-    .where(eq(incidents.id, parsed.data.incidentId))
-    .limit(1);
-  if (!incident || !hasPropertyAccess(ctx, incident.propertyId)) {
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const incidentRows = (await datastore.table("Incidents").getRows({
+    criteria: `Incidents.ROWID == '${parsed.data.incidentId}'`,
+    maxRows: 1,
+  })) as Array<CatalystRow & { property_id: string }>;
+  const incident = incidentRows[0];
+  if (!incident || !hasPropertyAccess(ctx, incident.property_id)) {
     return { error: "No access to this incident." };
   }
 
-  await db.insert(incidentNotifications).values({
-    incidentId: parsed.data.incidentId,
-    notifiedParty: parsed.data.notifiedParty,
+  await datastore.table("IncidentNotifications").insertRow({
+    incident_id: parsed.data.incidentId,
+    notified_party: parsed.data.notifiedParty,
     method: parsed.data.method ?? null,
-    notifiedBy: ctx.userId,
+    notified_by: ctx.userId,
   });
 
   revalidatePath(`/incidents/${parsed.data.incidentId}`);
@@ -453,20 +409,22 @@ export async function advanceIncidentStatusAction(
     "DEPARTMENT_MANAGER",
   ]);
 
-  const db = getDb();
-  const [incident] = await db
-    .select()
-    .from(incidents)
-    .where(eq(incidents.id, incidentId))
-    .limit(1);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const incidentRows = (await datastore.table("Incidents").getRows({
+    criteria: `Incidents.ROWID == '${incidentId}'`,
+    maxRows: 1,
+  })) as Array<CatalystRow & { property_id: string; department_id: string; status: string }>;
+  const incident = incidentRows[0];
   if (!incident) {
     return { error: "Unknown incident." };
   }
-  if (!hasPropertyAccess(ctx, incident.propertyId)) {
+  if (!hasPropertyAccess(ctx, incident.property_id)) {
     return { error: "No access to this incident." };
   }
 
-  const currentIndex = STATUS_ORDER.indexOf(incident.status);
+  const currentIndex = STATUS_ORDER.indexOf(incident.status as IncidentStatus);
   const targetIndex = STATUS_ORDER.indexOf(targetStatus);
   if (targetIndex !== currentIndex + 1) {
     return {
@@ -475,35 +433,32 @@ export async function advanceIncidentStatusAction(
   }
 
   if (targetStatus === "closed" || targetStatus === "verifying") {
-    const linkedCapas = await db
-      .select({ status: capaActions.status })
-      .from(capaActions)
-      .where(
-        and(eq(capaActions.sourceType, "incident"), eq(capaActions.sourceId, incidentId)),
-      );
-    const openCapas = linkedCapas.filter(
+    const linkedCapaRows = (await datastore.table("CAPA").getRows({
+      criteria: `CAPA.source_type == 'incident' && CAPA.source_id == '${incidentId}'`,
+    })) as Array<CatalystRow & { status: string }>;
+    const openCapas = linkedCapaRows.filter(
       (c) => c.status !== "closed" && c.status !== "verified",
     );
     if (targetStatus === "closed" && openCapas.length > 0) {
       return {
-        error:
-          "All linked corrective actions must be verified/closed before closing the incident.",
+        error: "All linked corrective actions must be verified/closed before closing the incident.",
       };
     }
   }
 
-  await db
-    .update(incidents)
-    .set({ status: targetStatus, updatedAt: new Date() })
-    .where(eq(incidents.id, incidentId));
+  await datastore.table("Incidents").updateRow({
+    ROWID: incidentId,
+    status: targetStatus,
+    updated_at: new Date().toISOString(),
+  });
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "status_changed",
-    entityType: "incidents",
+    entityType: "Incidents",
     entityId: incidentId,
-    propertyId: incident.propertyId,
-    departmentId: incident.departmentId,
+    propertyId: incident.property_id,
+    departmentId: incident.department_id,
     previousValue: { status: incident.status },
     newValue: { status: targetStatus },
   });

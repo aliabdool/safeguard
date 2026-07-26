@@ -1,25 +1,17 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
-import { getDb } from "@/db";
-import {
-  incidents,
-  investigationApprovals,
-  investigationCauses,
-  investigationFiveWhys,
-  investigationWitnesses,
-  investigations,
-} from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { writeAuditLog } from "@/server/audit-log";
 import { hasPropertyAccess, requireActiveUser, requireRole } from "@/server/permissions";
 
 const assignSchema = z.object({
-  incidentId: z.string().uuid(),
-  investigatorId: z.string().uuid(),
+  incidentId: z.string(),
+  investigatorId: z.string(),
 });
 
 export async function assignInvestigatorAction(
@@ -35,32 +27,44 @@ export async function assignInvestigatorAction(
     return { error: "Invalid investigator selection." };
   }
 
-  const db = getDb();
-  const [incident] = await db
-    .select()
-    .from(incidents)
-    .where(eq(incidents.id, parsed.data.incidentId))
-    .limit(1);
-  if (!incident || !hasPropertyAccess(ctx, incident.propertyId)) {
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const incidentRows = (await datastore.table("Incidents").getRows({
+    criteria: `Incidents.ROWID == '${parsed.data.incidentId}'`,
+    maxRows: 1,
+  })) as Array<CatalystRow & { property_id: string }>;
+  const incident = incidentRows[0];
+  if (!incident || !hasPropertyAccess(ctx, incident.property_id)) {
     return { error: "No access to this incident." };
   }
 
-  await db
-    .insert(investigations)
-    .values({
-      incidentId: parsed.data.incidentId,
-      investigatorId: parsed.data.investigatorId,
+  // Data Store has no upsert/onConflictDoUpdate — IncidentInvestigation.incident_id is unique per
+  // the schema, so check for an existing row first rather than risk a duplicate-key failure.
+  const existingRows = (await datastore.table("IncidentInvestigation").getRows({
+    criteria: `IncidentInvestigation.incident_id == '${parsed.data.incidentId}'`,
+    maxRows: 1,
+  })) as CatalystRow[];
+  const existing = existingRows[0];
+
+  if (existing) {
+    await datastore.table("IncidentInvestigation").updateRow({
+      ROWID: existing.ROWID,
+      investigator_id: parsed.data.investigatorId,
       status: "assigned",
-    })
-    .onConflictDoUpdate({
-      target: investigations.incidentId,
-      set: { investigatorId: parsed.data.investigatorId, status: "assigned" },
     });
+  } else {
+    await datastore.table("IncidentInvestigation").insertRow({
+      incident_id: parsed.data.incidentId,
+      investigator_id: parsed.data.investigatorId,
+      status: "assigned",
+    });
+  }
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "record_created",
-    entityType: "investigations",
+    entityType: "IncidentInvestigation",
     entityId: parsed.data.incidentId,
     newValue: { investigatorId: parsed.data.investigatorId },
   });
@@ -70,8 +74,8 @@ export async function assignInvestigatorAction(
 }
 
 const causeSchema = z.object({
-  investigationId: z.string().uuid(),
-  incidentId: z.string().uuid(),
+  investigationId: z.string(),
+  incidentId: z.string(),
   causeType: z.enum(["immediate", "root"]),
   category: z.string().optional(),
   description: z.string().min(1, "Description is required."),
@@ -93,10 +97,10 @@ export async function addCauseAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid cause." };
   }
 
-  const db = getDb();
-  await db.insert(investigationCauses).values({
-    investigationId: parsed.data.investigationId,
-    causeType: parsed.data.causeType,
+  const catalystApp = catalystAppFromHeaders(await headers());
+  await catalystApp.datastore().table("IncidentRootCauses").insertRow({
+    investigation_id: parsed.data.investigationId,
+    cause_type: parsed.data.causeType,
     category: parsed.data.category ?? null,
     description: parsed.data.description,
   });
@@ -106,8 +110,8 @@ export async function addCauseAction(
 }
 
 const fiveWhySchema = z.object({
-  investigationId: z.string().uuid(),
-  incidentId: z.string().uuid(),
+  investigationId: z.string(),
+  incidentId: z.string(),
   sequence: z.coerce.number().int().min(1).max(5),
   question: z.string().min(1),
   answer: z.string().optional(),
@@ -129,9 +133,9 @@ export async function addFiveWhyAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid entry." };
   }
 
-  const db = getDb();
-  await db.insert(investigationFiveWhys).values({
-    investigationId: parsed.data.investigationId,
+  const catalystApp = catalystAppFromHeaders(await headers());
+  await catalystApp.datastore().table("IncidentFiveWhys").insertRow({
+    investigation_id: parsed.data.investigationId,
     sequence: parsed.data.sequence,
     question: parsed.data.question,
     answer: parsed.data.answer ?? null,
@@ -142,8 +146,8 @@ export async function addFiveWhyAction(
 }
 
 const witnessSchema = z.object({
-  investigationId: z.string().uuid(),
-  incidentId: z.string().uuid(),
+  investigationId: z.string(),
+  incidentId: z.string(),
   name: z.string().min(1),
   role: z.string().optional(),
   statement: z.string().optional(),
@@ -167,9 +171,9 @@ export async function addWitnessAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid witness." };
   }
 
-  const db = getDb();
-  await db.insert(investigationWitnesses).values({
-    investigationId: parsed.data.investigationId,
+  const catalystApp = catalystAppFromHeaders(await headers());
+  await catalystApp.datastore().table("IncidentWitnesses").insertRow({
+    investigation_id: parsed.data.investigationId,
     name: parsed.data.name,
     role: parsed.data.role ?? null,
     statement: parsed.data.statement ?? null,
@@ -181,8 +185,8 @@ export async function addWitnessAction(
 }
 
 const reconstructionSchema = z.object({
-  investigationId: z.string().uuid(),
-  incidentId: z.string().uuid(),
+  investigationId: z.string(),
+  incidentId: z.string(),
   eventReconstruction: z
     .string()
     .min(1, "Event reconstruction is required to complete the investigation."),
@@ -202,16 +206,18 @@ export async function completeInvestigationAction(
     return { error: parsed.error.issues[0]?.message ?? "Event reconstruction is required." };
   }
 
-  const db = getDb();
-  const [investigation] = await db
-    .select()
-    .from(investigations)
-    .where(eq(investigations.id, parsed.data.investigationId))
-    .limit(1);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const investigationRows = (await datastore.table("IncidentInvestigation").getRows({
+    criteria: `IncidentInvestigation.ROWID == '${parsed.data.investigationId}'`,
+    maxRows: 1,
+  })) as Array<CatalystRow & { investigator_id: string }>;
+  const investigation = investigationRows[0];
   if (!investigation) {
     return { error: "Unknown investigation." };
   }
-  if (investigation.investigatorId !== ctx.userId) {
+  if (investigation.investigator_id !== ctx.userId) {
     const isElevated = ["PROPERTY_HS_OFFICER", "GROUP_HS_ADMIN", "SUPER_ADMIN"].some((r) =>
       ctx.roleCodes.includes(r as (typeof ctx.roleCodes)[number]),
     );
@@ -222,19 +228,17 @@ export async function completeInvestigationAction(
     }
   }
 
-  await db
-    .update(investigations)
-    .set({
-      eventReconstruction: parsed.data.eventReconstruction,
-      status: "completed",
-      completedAt: new Date(),
-    })
-    .where(eq(investigations.id, parsed.data.investigationId));
+  await datastore.table("IncidentInvestigation").updateRow({
+    ROWID: parsed.data.investigationId,
+    event_reconstruction: parsed.data.eventReconstruction,
+    status: "completed",
+    completed_at: new Date().toISOString(),
+  });
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: "status_changed",
-    entityType: "investigations",
+    entityType: "IncidentInvestigation",
     entityId: parsed.data.investigationId,
     newValue: { status: "completed" },
   });
@@ -244,8 +248,8 @@ export async function completeInvestigationAction(
 }
 
 const approveSchema = z.object({
-  investigationId: z.string().uuid(),
-  incidentId: z.string().uuid(),
+  investigationId: z.string(),
+  incidentId: z.string(),
   decision: z.enum(["approved", "rejected"]),
   comment: z.string().optional(),
 });
@@ -265,23 +269,25 @@ export async function approveInvestigationAction(
     return { error: "Invalid approval." };
   }
 
-  const db = getDb();
-  await db.insert(investigationApprovals).values({
-    investigationId: parsed.data.investigationId,
-    approverId: ctx.userId,
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  await datastore.table("InvestigationApprovals").insertRow({
+    investigation_id: parsed.data.investigationId,
+    approver_id: ctx.userId,
     decision: parsed.data.decision,
     comment: parsed.data.comment ?? null,
   });
 
-  await db
-    .update(investigations)
-    .set({ status: parsed.data.decision === "approved" ? "approved" : "in_progress" })
-    .where(eq(investigations.id, parsed.data.investigationId));
+  await datastore.table("IncidentInvestigation").updateRow({
+    ROWID: parsed.data.investigationId,
+    status: parsed.data.decision === "approved" ? "approved" : "in_progress",
+  });
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: parsed.data.decision === "approved" ? "approval" : "rejection",
-    entityType: "investigations",
+    entityType: "IncidentInvestigation",
     entityId: parsed.data.investigationId,
     reason: parsed.data.comment ?? null,
   });
