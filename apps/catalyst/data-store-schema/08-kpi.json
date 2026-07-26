@@ -1,5 +1,5 @@
 {
-  "_comment": "KPI calculation snapshots — one append-only row per calculateKpi() call, read by api-dashboard-summary's getKpiOverview() instead of live recalculation. Mirrors kpi_calculations from the Supabase build (docs/kpi-catalogue.md §2-3). KPIDefinitions itself already lives in 02-master-data.json.",
+  "_comment": "KPI calculation snapshots — one append-only row per calculateKpi() call, read by api-dashboard-summary's getKpiOverview() instead of live recalculation. Mirrors kpi_calculations from the Supabase build (docs/kpi-catalogue.md §2-3). KPIDefinitions itself already lives in 02-master-data.json. KPISnapshots.period_start/period_end/comparison_period_start/comparison_period_end/variance_abs/variance_pct/data_through_date/excluded_record_ids/calculated_by were added during the Supabase-to-Catalyst migration (Phase C, apps/web KPI/dashboard module) — they existed on Postgres's kpi_calculations table and are needed so a historical board figure can be reconstructed exactly as it was calculated at the time, but were missing from the original port. KPISnapshots.kpi_code's type was also corrected from 'lookup'/references:KPIDefinitions to plain 'text' here — the already-working reference implementation in apps/catalyst/functions/shared/adapters/kpi-datastore-repo.ts always reads/writes this column as the raw KPI code string (e.g. 'TOTAL_INCIDENTS'), never a KPIDefinitions ROWID, so a real lookup-typed column would have been a type mismatch against every consumer of this table.",
   "tables": [
     {
       "table_name": "ExposureData",
@@ -20,7 +20,7 @@
       "table_name": "KPISnapshots",
       "scope": "Org",
       "columns": [
-        { "column_name": "kpi_code", "type": "lookup", "references": "KPIDefinitions", "notNull": true },
+        { "column_name": "kpi_code", "type": "text", "notNull": true, "comment": "The KPI code string itself (e.g. 'TOTAL_INCIDENTS'), not a lookup — see the file-level comment above." },
         { "column_name": "property_id", "type": "lookup", "references": "Properties", "nullable": true, "comment": "Null = group-wide." },
         { "column_name": "department_id", "type": "lookup", "references": "Departments", "nullable": true },
         { "column_name": "financial_year", "type": "text", "nullable": true, "comment": "e.g. FY2027 — read by api-dashboard-summary's getKpiOverview()." },
@@ -32,6 +32,15 @@
         { "column_name": "name", "type": "text", "nullable": true },
         { "column_name": "data_quality_status", "type": "text", "notNull": true, "comment": "ok | unverified | incomplete" },
         { "column_name": "included_record_ids", "type": "text", "notNull": true, "comment": "JSON array, stored as text — Data Store has no native array column." },
+        { "column_name": "period_start", "type": "date", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_calculations.period_start." },
+        { "column_name": "period_end", "type": "date", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_calculations.period_end." },
+        { "column_name": "comparison_period_start", "type": "date", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_calculations.comparison_period_start." },
+        { "column_name": "comparison_period_end", "type": "date", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_calculations.comparison_period_end." },
+        { "column_name": "variance_abs", "type": "decimal", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_calculations.variance_abs." },
+        { "column_name": "variance_pct", "type": "decimal", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_calculations.variance_pct." },
+        { "column_name": "data_through_date", "type": "date", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_calculations.data_through_date." },
+        { "column_name": "excluded_record_ids", "type": "text", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; JSON array stored as text, mirrors included_record_ids. Ported from kpi_calculations.excluded_record_ids." },
+        { "column_name": "calculated_by", "type": "lookup", "references": "Users", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_calculations.calculated_by." },
         { "column_name": "calculated_at", "type": "datetime", "notNull": true, "default": "now" }
       ]
     }

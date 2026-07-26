@@ -1,56 +1,38 @@
 import "server-only";
 
-import { and, eq, inArray, or } from "drizzle-orm";
-
-import { getDb } from "@/db";
-import { auditFindings, audits } from "@/db/schema";
-
+import { propertyScopeClause } from "../scope";
 import type { KpiCalculationParams, KpiCalculationResult } from "../types";
 
+interface FindingJoinRow {
+  AuditFindings: { ROWID: string };
+}
+
 /**
- * OPEN_CRIT_MAJOR_FINDINGS is a point-in-time count (open critical/major findings right now),
- * not a period-bounded count — the "current"/"comparison" split here instead compares "now" vs
- * "at the end of the comparison period", giving a like-for-like trend reading. Property scoping
- * goes through the parent audit.
+ * OPEN_CRIT_MAJOR_FINDINGS is a point-in-time count (open critical/major findings right now), not
+ * a period-bounded count — comparisonValue is always null, matching the pre-migration version.
+ * Property scoping goes through the parent audit (AuditFindings has no property_id of its own),
+ * via a ZCQL join rather than a two-step audit-id-list + inArray fetch — one round trip instead
+ * of two, same result.
  */
 export async function countOpenCriticalMajorFindings(
   params: KpiCalculationParams,
 ): Promise<KpiCalculationResult> {
-  const db = getDb();
+  const zcql = params.catalystApp.zcql();
+  const propClause = params.propertyId
+    ? `Audits.property_id == '${params.propertyId}'`
+    : propertyScopeClause("Audits.property_id", params.ctx);
 
-  const auditIdsQuery = params.propertyId
-    ? db.select({ id: audits.id }).from(audits).where(eq(audits.propertyId, params.propertyId))
-    : db.select({ id: audits.id }).from(audits);
-  const auditIds = (await auditIdsQuery).map((a) => a.id);
-
-  if (auditIds.length === 0) {
-    return {
-      currentValue: 0,
-      comparisonValue: null,
-      includedRecordIds: [],
-      excludedRecordIds: [],
-      dataQualityStatus: "ok",
-    };
-  }
-
-  const openNow = await db
-    .select({ id: auditFindings.id })
-    .from(auditFindings)
-    .where(
-      and(
-        inArray(auditFindings.auditId, auditIds),
-        or(
-          eq(auditFindings.classification, "critical_nc"),
-          eq(auditFindings.classification, "major_nc"),
-        ),
-        inArray(auditFindings.status, ["open", "action_assigned", "verified"]),
-      ),
-    );
+  const rows = (await zcql.executeZCQLQuery(
+    `select AuditFindings.ROWID from AuditFindings
+     left join Audits on AuditFindings.audit_id = Audits.ROWID
+     where ${propClause} && AuditFindings.classification in ('critical_nc','major_nc')
+       && AuditFindings.status in ('open','action_assigned','verified')`,
+  )) as FindingJoinRow[];
 
   return {
-    currentValue: openNow.length,
+    currentValue: rows.length,
     comparisonValue: null,
-    includedRecordIds: openNow.map((f) => f.id),
+    includedRecordIds: rows.map((r) => r.AuditFindings.ROWID),
     excludedRecordIds: [],
     dataQualityStatus: "ok",
   };

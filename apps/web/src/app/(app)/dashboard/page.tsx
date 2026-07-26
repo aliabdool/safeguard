@@ -1,4 +1,4 @@
-import { and, between, eq, sql } from "drizzle-orm";
+import { headers } from "next/headers";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getDb } from "@/db";
-import { departments, incidents, properties } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi } from "@/server/kpi/calculate";
 import { financialYearFor, recentFinancialYears } from "@/server/kpi/period";
+import { propertyScopeClause } from "@/server/kpi/scope";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
 import { IncidentBarChart } from "./incident-bar-chart";
@@ -47,6 +47,10 @@ const HEADLINE_KPI_CODES = [
   "CAPA_EFFECTIVENESS",
 ];
 
+interface PropertyRow extends CatalystRow {
+  name: string;
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -54,7 +58,6 @@ export default async function DashboardPage({
 }) {
   const { propertyId, fy } = await searchParams;
   const ctx = await getAuthContext();
-  const db = getDb();
 
   if (!ctx || (ctx.propertyIds.length === 0 && !ctx.roleCodes.length)) {
     return (
@@ -79,12 +82,16 @@ export default async function DashboardPage({
     );
   }
 
-  const allProperties = await db
-    .select({ id: properties.id, name: properties.name })
-    .from(properties);
-  const availableProperties = allProperties.filter((p) => hasPropertyAccess(ctx, p.id));
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+  const zcql = catalystApp.zcql();
+
+  const allProperties = (await datastore
+    .table("Properties")
+    .getRows({ maxRows: 200 })) as PropertyRow[];
+  const availableProperties = allProperties.filter((p) => hasPropertyAccess(ctx, p.ROWID));
   const selectedPropertyId =
-    propertyId && availableProperties.some((p) => p.id === propertyId) ? propertyId : null;
+    propertyId && availableProperties.some((p) => p.ROWID === propertyId) ? propertyId : null;
 
   const fyOptions = recentFinancialYears(new Date());
   const selectedFy = fyOptions.find((o) => o.label === fy) ?? fyOptions[0]!;
@@ -92,37 +99,46 @@ export default async function DashboardPage({
 
   const tiles = await Promise.all(
     HEADLINE_KPI_CODES.map((code) =>
-      calculateKpi(code, { propertyId: selectedPropertyId, asOf: selectedFy.asOfAnchor }),
+      calculateKpi(catalystApp, ctx, code, {
+        propertyId: selectedPropertyId,
+        asOf: selectedFy.asOfAnchor,
+      }),
     ),
   );
 
-  const scopePredicate = selectedPropertyId
-    ? eq(incidents.propertyId, selectedPropertyId)
-    : undefined;
-  const periodPredicate = between(
-    incidents.occurredAt,
-    selectedPeriod.start,
-    selectedPeriod.end,
-  );
+  const incidentScope = selectedPropertyId
+    ? `Incidents.property_id == '${selectedPropertyId}'`
+    : propertyScopeClause("Incidents.property_id", ctx);
+  const periodClause = `Incidents.occurred_at between '${selectedPeriod.start.toISOString()}' and '${selectedPeriod.end.toISOString()}'`;
 
-  const [byType, byDept] = await Promise.all([
-    db
-      .select({ label: incidents.incidentType, count: sql<number>`count(*)::int` })
-      .from(incidents)
-      .where(and(periodPredicate, scopePredicate))
-      .groupBy(incidents.incidentType)
-      .orderBy(sql`count(*) desc`),
-    db
-      .select({ label: departments.name, count: sql<number>`count(*)::int` })
-      .from(incidents)
-      .innerJoin(departments, eq(departments.id, incidents.departmentId))
-      .where(and(periodPredicate, scopePredicate))
-      .groupBy(departments.name)
-      .orderBy(sql`count(*) desc`),
-  ]);
+  const [byTypeRows, byDeptRows] = (await Promise.all([
+    zcql.executeZCQLQuery(
+      `select Incidents.incident_type, count(Incidents.ROWID) as n from Incidents
+       where ${incidentScope} && ${periodClause}
+       group by Incidents.incident_type`,
+    ),
+    zcql.executeZCQLQuery(
+      `select Departments.name, count(Incidents.ROWID) as n from Incidents
+       left join Departments on Incidents.department_id = Departments.ROWID
+       where ${incidentScope} && ${periodClause}
+       group by Departments.name`,
+    ),
+  ])) as [
+    Array<{ Incidents: { incident_type: string; n: string } }>,
+    Array<{ Departments: { name: string }; Incidents: { n: string } }>,
+  ];
+
+  const byType = byTypeRows
+    .map((r) => ({ label: r.Incidents.incident_type, count: Number(r.Incidents.n) }))
+    .sort((a, b) => b.count - a.count);
+  const byDept = byDeptRows
+    .map((r) => ({ label: r.Departments.name, count: Number(r.Incidents.n) }))
+    .sort((a, b) => b.count - a.count);
 
   // Data-quality panel — real checks against this FY/property's own records, not fabricated.
   const dataQuality = await computeDataQuality({
+    catalystApp,
+    ctx,
     propertyId: selectedPropertyId,
     periodStart: selectedPeriod.start,
     periodEnd: selectedPeriod.end,
@@ -135,7 +151,7 @@ export default async function DashboardPage({
           Board &amp; management dashboard
         </h1>
         <p className="text-muted-foreground text-sm">
-          {selectedFy.label} · every figure computed live from Supabase records — never
+          {selectedFy.label} · every figure computed live from Catalyst Data Store records — never
           hard-coded. Click a tile for the full &ldquo;View calculation&rdquo; breakdown.
         </p>
       </div>
@@ -165,7 +181,7 @@ export default async function DashboardPage({
             <SelectContent>
               <SelectItem value="all">All accessible properties</SelectItem>
               {availableProperties.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
+                <SelectItem key={p.ROWID} value={p.ROWID}>
                   {p.name}
                 </SelectItem>
               ))}

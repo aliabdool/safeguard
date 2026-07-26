@@ -1,12 +1,33 @@
 import "server-only";
 
-import type { CatalystApp, CatalystRow } from "@/lib/catalyst/app";
+import { catalystAdminApp, type CatalystApp, type CatalystRow } from "@/lib/catalyst/app";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi, type KpiTileResult } from "@/server/kpi/calculate";
 import { financialYearFor } from "@/server/kpi/period";
+import type { AuthContext } from "@/server/permissions";
 
 import type { AssurancePackInput, OpenFindingRow } from "./assurance-pack";
 import type { BoardNarrativeInput } from "./board-narrative";
+
+/**
+ * calculateKpi()/computeDataQuality() both need an AuthContext (Catalyst has no RLS backstop —
+ * see server/kpi/scope.ts), but by the time gather.ts runs, the caller (reports/export/actions.ts)
+ * has already required an export role and clamped `propertyId` to one the caller can actually see
+ * — see resolveScope() there. This synthetic group-wide SYSTEM_CTX stands in for a real session at
+ * this call depth (a report-generation helper has no end-user session of its own) and is safe
+ * specifically because propertyId is already pre-scoped by the caller; when propertyId is null,
+ * this preserves the pre-migration behaviour of querying unscoped rather than restricting to the
+ * caller's property set (see the comment on gatherAssurancePackInput's ZCQL queries below — not a
+ * new gap introduced by this migration, just consistently preserved).
+ */
+const SYSTEM_CTX: AuthContext = {
+  userId: "system-reporting",
+  status: "active",
+  roleCodes: ["SUPER_ADMIN"],
+  propertyIds: [],
+  departmentAccess: new Map(),
+  hasMedicalPermission: false,
+};
 
 const NARRATIVE_KPI_CODES = [
   "TOTAL_INCIDENTS",
@@ -43,8 +64,11 @@ async function gatherKpis(
   propertyId: string | null,
   asOfAnchor: Date,
 ): Promise<KpiTileResult[]> {
+  const catalystApp = catalystAdminApp();
   const results = await Promise.all(
-    NARRATIVE_KPI_CODES.map((code) => calculateKpi(code, { propertyId, asOf: asOfAnchor })),
+    NARRATIVE_KPI_CODES.map((code) =>
+      calculateKpi(catalystApp, SYSTEM_CTX, code, { propertyId, asOf: asOfAnchor }),
+    ),
   );
   return results.filter((r): r is KpiTileResult => r !== null);
 }
@@ -57,7 +81,13 @@ export async function gatherBoardNarrativeInput(
   const { fyLabel, period, propertyLabel } = await scopeMeta(catalystApp, propertyId, asOfAnchor);
   const [kpis, dataQuality] = await Promise.all([
     gatherKpis(propertyId, asOfAnchor),
-    computeDataQuality({ propertyId, periodStart: period.start, periodEnd: period.end }),
+    computeDataQuality({
+      catalystApp: catalystAdminApp(),
+      ctx: SYSTEM_CTX,
+      propertyId,
+      periodStart: period.start,
+      periodEnd: period.end,
+    }),
   ]);
   return { fyLabel, propertyLabel, generatedAt: new Date(), kpis, dataQuality };
 }
@@ -80,7 +110,13 @@ export async function gatherAssurancePackInput(
 
   const [kpis, dataQuality] = await Promise.all([
     gatherKpis(propertyId, asOfAnchor),
-    computeDataQuality({ propertyId, periodStart: period.start, periodEnd: period.end }),
+    computeDataQuality({
+      catalystApp: catalystAdminApp(),
+      ctx: SYSTEM_CTX,
+      propertyId,
+      periodStart: period.start,
+      periodEnd: period.end,
+    }),
   ]);
 
   const zcql = catalystApp.zcql();

@@ -150,7 +150,10 @@
         { "column_name": "reporting_frequency", "type": "text", "notNull": true },
         { "column_name": "source_tables", "type": "text", "notNull": true, "comment": "JSON array, stored as text — Catalyst Data Store has no native array column type." },
         { "column_name": "effective_from", "type": "date", "notNull": true },
-        { "column_name": "calculator_function", "type": "text", "nullable": true, "comment": "Name of the Function/module implementing this KPI, or null if not yet implemented (mirrors isKpiImplemented()) — the API must return \"not yet calculable\", never a fabricated number, when this is null." }
+        { "column_name": "calculator_function", "type": "text", "nullable": true, "comment": "Name of the Function/module implementing this KPI, or null if not yet implemented (mirrors isKpiImplemented()) — the API must return \"not yet calculable\", never a fabricated number, when this is null." },
+        { "column_name": "version", "type": "bigint", "notNull": true, "default": 1, "comment": "Added during the Supabase-to-Catalyst migration (Phase C, apps/web KPI/dashboard module) — missing from the original port; ported from kpi_definitions.version and rendered on the KPI detail page's subtitle." },
+        { "column_name": "evidence_requirements", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_definitions.evidence_requirements, rendered on the KPI detail page's 'View calculation' panel." },
+        { "column_name": "assurance_status", "type": "text", "notNull": true, "default": "unverified", "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port; ported from kpi_definitions.assurance_status, rendered on the KPI detail page's 'View calculation' panel." }
       ]
     }
   ]

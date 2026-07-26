@@ -1,9 +1,8 @@
 import "server-only";
 
-import { and, between, eq, isNull, lt, ne, notInArray, sql } from "drizzle-orm";
-
-import { getDb } from "@/db";
-import { capaActions, incidents, investigationCauses, investigations } from "@/db/schema";
+import type { CatalystApp } from "@/lib/catalyst/app";
+import { propertyScopeClause } from "@/server/kpi/scope";
+import type { AuthContext } from "@/server/permissions";
 
 export interface DataQualityRow {
   label: string;
@@ -16,86 +15,69 @@ export interface DataQualityRow {
  * exports so the two never drift out of sync with each other.
  */
 export async function computeDataQuality(params: {
+  catalystApp: CatalystApp;
+  ctx: AuthContext;
   propertyId: string | null;
   periodStart: Date;
   periodEnd: Date;
 }): Promise<DataQualityRow[]> {
-  const { propertyId, periodStart, periodEnd } = params;
-  const db = getDb();
+  const { catalystApp, ctx, propertyId, periodStart, periodEnd } = params;
+  const zcql = catalystApp.zcql();
+  const datastore = catalystApp.datastore();
 
-  const scopePredicate = propertyId ? eq(incidents.propertyId, propertyId) : undefined;
-  const periodPredicate = between(incidents.occurredAt, periodStart, periodEnd);
+  const incidentScope = propertyId
+    ? `Incidents.property_id == '${propertyId}'`
+    : propertyScopeClause("Incidents.property_id", ctx);
+  const periodClause = `Incidents.occurred_at between '${periodStart.toISOString()}' and '${periodEnd.toISOString()}'`;
 
-  const inScopeIncidents = await db
-    .select({ id: incidents.id, status: incidents.status })
-    .from(incidents)
-    .where(and(periodPredicate, scopePredicate));
+  const inScopeIncidents = (await datastore.table("Incidents").getRows({
+    criteria: `${incidentScope} && ${periodClause}`,
+  })) as Array<{ ROWID: string; status: string }>;
   const needingInvestigation = inScopeIncidents.filter((i) => i.status !== "reported");
 
-  const rootCauseIncidentIds =
-    needingInvestigation.length === 0
-      ? new Set<string>()
-      : new Set(
-          (
-            await db
-              .select({ incidentId: investigations.incidentId })
-              .from(investigationCauses)
-              .innerJoin(
-                investigations,
-                eq(investigations.id, investigationCauses.investigationId),
-              )
-              .where(eq(investigationCauses.causeType, "root"))
-          ).map((r) => r.incidentId),
-        );
-  const missingRootCause = needingInvestigation.filter(
-    (i) => !rootCauseIncidentIds.has(i.id),
-  ).length;
-
-  const [missingInjuryMechanism] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(incidents)
-    .where(
-      and(
-        periodPredicate,
-        scopePredicate,
-        isNull(incidents.injuryMechanism),
-        ne(incidents.outcome, "no_injury"),
-      ),
+  let missingRootCause = 0;
+  if (needingInvestigation.length > 0) {
+    const rootCauseRows = (await zcql.executeZCQLQuery(
+      `select IncidentInvestigation.incident_id from IncidentRootCauses
+       left join IncidentInvestigation on IncidentRootCauses.investigation_id = IncidentInvestigation.ROWID
+       where IncidentRootCauses.cause_type == 'root'`,
+    )) as Array<{ IncidentInvestigation: { incident_id: string } }>;
+    const rootCauseIncidentIds = new Set(
+      rootCauseRows.map((r) => r.IncidentInvestigation.incident_id),
     );
+    missingRootCause = needingInvestigation.filter((i) => !rootCauseIncidentIds.has(i.ROWID)).length;
+  }
 
-  const [pendingReportableDetermination] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(incidents)
-    .where(
-      and(
-        periodPredicate,
-        scopePredicate,
-        eq(incidents.reportableStatus, "pending_determination"),
-      ),
-    );
+  const missingInjuryMechanismRows = (await zcql.executeZCQLQuery(
+    `select count(Incidents.ROWID) as n from Incidents
+     where ${incidentScope} && ${periodClause} && Incidents.injury_mechanism_id is null && Incidents.outcome != 'no_injury'`,
+  )) as Array<{ Incidents: { n: string } }>;
 
-  const capaScopePredicate = propertyId ? eq(capaActions.propertyId, propertyId) : undefined;
-  const [overdueCapa] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(capaActions)
-    .where(
-      and(
-        capaScopePredicate,
-        lt(capaActions.dueDate, new Date().toISOString().slice(0, 10)),
-        notInArray(capaActions.status, ["closed", "verified"]),
-      ),
-    );
+  const pendingReportableRows = (await zcql.executeZCQLQuery(
+    `select count(Incidents.ROWID) as n from Incidents
+     left join IncidentOSHReportability on Incidents.ROWID = IncidentOSHReportability.incident_id
+     where ${incidentScope} && ${periodClause} && IncidentOSHReportability.reportable_status == 'pending_determination'`,
+  )) as Array<{ Incidents: { n: string } }>;
+
+  const capaScope = propertyId
+    ? `CAPA.property_id == '${propertyId}'`
+    : propertyScopeClause("CAPA.property_id", ctx);
+  const today = new Date().toISOString().slice(0, 10);
+  const overdueCapaRows = (await zcql.executeZCQLQuery(
+    `select count(CAPA.ROWID) as n from CAPA
+     where ${capaScope} && CAPA.due_date < '${today}' && CAPA.status != 'closed' && CAPA.status != 'verified'`,
+  )) as Array<{ CAPA: { n: string } }>;
 
   return [
     { label: "Missing root cause (investigated incidents)", count: missingRootCause },
     {
       label: "Missing injury mechanism (injury outcomes)",
-      count: missingInjuryMechanism?.n ?? 0,
+      count: Number(missingInjuryMechanismRows[0]?.Incidents.n ?? 0),
     },
     {
       label: "OSH-reportable status not yet determined",
-      count: pendingReportableDetermination?.n ?? 0,
+      count: Number(pendingReportableRows[0]?.Incidents.n ?? 0),
     },
-    { label: "Corrective actions overdue", count: overdueCapa?.n ?? 0 },
+    { label: "Corrective actions overdue", count: Number(overdueCapaRows[0]?.CAPA.n ?? 0) },
   ];
 }

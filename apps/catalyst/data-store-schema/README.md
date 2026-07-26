@@ -29,7 +29,9 @@ deliverable) for the enforcement pattern once it lands.
 - `02-master-data.json` — Properties, Departments, IncidentTypes, InjuryMechanisms,
   RootCauseCategories, Frameworks, FrameworkRequirements, Controls, ControlFrameworkMappings,
   LegalRequirementDetails (added during the Supabase-to-Catalyst migration — missing from the
-  original Phase 8 port), KPIDefinitions
+  original Phase 8 port), KPIDefinitions (version, evidence_requirements and assurance_status
+  added during the Supabase-to-Catalyst migration, Phase C KPI/dashboard module — missing from
+  the original port, rendered on the KPI detail page)
 - `03-incidents.json` — Incidents, IncidentPersons, IncidentWitnesses, IncidentInvestigation,
   IncidentFiveWhys, IncidentRootCauses, InvestigationApprovals, IncidentAttachments,
   IncidentNotifications, IncidentOSHReportability, MedicalNotes (the three approvals/attachments/
@@ -56,7 +58,11 @@ deliverable) for the enforcement pattern once it lands.
   and reference-number columns, were added during the Supabase-to-Catalyst migration — missing
   from the original Phase 9 port)
 - `08-kpi.json` — ExposureData (hours worked / occupied room nights feeding rate-based KPIs),
-  KPISnapshots (the 22 live-calculated KPIs — see `functions/shared/services/kpi-service.ts`)
+  KPISnapshots (the 22 live-calculated KPIs — see `functions/shared/services/kpi-service.ts` and,
+  for the apps/web port, `apps/web/src/server/kpi/calculate.ts`; kpi_code corrected from a
+  `KPIDefinitions` lookup to plain text, and period_start/period_end/comparison_period_start/
+  comparison_period_end/variance_abs/variance_pct/data_through_date/excluded_record_ids/
+  calculated_by added, during the Supabase-to-Catalyst migration — missing from the original port)
 - `09-materiality-climate.json` — MaterialTopics, MaterialityConsultations, ClimateRisks — full
   parity with `apps/web`'s materiality.ts/climate-risk.ts (expanded from the original Phase 11
   minimal scope during the Supabase-to-Catalyst migration, with ClimateRisks completed to actual

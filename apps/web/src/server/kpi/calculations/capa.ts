@@ -1,47 +1,46 @@
 import "server-only";
 
-import { and, between, eq } from "drizzle-orm";
-
-import { getDb } from "@/db";
-import { capaActions, capaVerifications } from "@/db/schema";
-
+import { propertyScopeClause } from "../scope";
 import type { KpiCalculationParams, KpiCalculationResult } from "../types";
+
+/** Not `extends CatalystRow` — final_approved_at is genuinely nullable, which conflicts with
+ * CatalystRow's `Record<string, string>` index signature. */
+interface CapaRow {
+  ROWID: string;
+  due_date: string;
+  final_approved_at: string | null;
+}
+
+interface VerificationJoinRow {
+  CAPAVerification: { ROWID: string; outcome: string };
+}
+
+function capaScopeClause(params: KpiCalculationParams, table = "CAPA"): string {
+  const propClause = params.propertyId
+    ? `${table}.property_id == '${params.propertyId}'`
+    : propertyScopeClause(`${table}.property_id`, params.ctx);
+  const deptClause = params.departmentId ? ` && ${table}.department_id == '${params.departmentId}'` : "";
+  return `${propClause}${deptClause}`;
+}
 
 /** Proportion of CAPA actions closed in the period that were closed by their due date. */
 export async function capaClosedOnTimeRate(
   params: KpiCalculationParams,
 ): Promise<KpiCalculationResult> {
-  const db = getDb();
-  const scopePredicate = params.propertyId
-    ? eq(capaActions.propertyId, params.propertyId)
-    : undefined;
-  const deptPredicate = params.departmentId
-    ? eq(capaActions.departmentId, params.departmentId)
-    : undefined;
+  const datastore = params.catalystApp.datastore();
+  const scope = capaScopeClause(params);
 
   async function rate(start: Date, end: Date) {
-    const closed = await db
-      .select({
-        id: capaActions.id,
-        dueDate: capaActions.dueDate,
-        finalApprovedAt: capaActions.finalApprovedAt,
-      })
-      .from(capaActions)
-      .where(
-        and(
-          eq(capaActions.status, "closed"),
-          between(capaActions.finalApprovedAt, start, end),
-          scopePredicate,
-          deptPredicate,
-        ),
-      );
+    const closed = (await datastore.table("CAPA").getRows({
+      criteria: `${scope} && CAPA.status == 'closed' && CAPA.final_approved_at between '${start.toISOString()}' and '${end.toISOString()}'`,
+    })) as unknown as CapaRow[];
     if (closed.length === 0) {
-      return { value: null, ids: [] as string[] };
+      return { value: null as number | null, ids: [] as string[] };
     }
     const onTime = closed.filter(
-      (c) => c.finalApprovedAt && c.finalApprovedAt <= new Date(`${c.dueDate}T23:59:59Z`),
+      (c) => c.final_approved_at != null && c.final_approved_at <= `${c.due_date}T23:59:59Z`,
     );
-    return { value: (onTime.length / closed.length) * 100, ids: closed.map((c) => c.id) };
+    return { value: (onTime.length / closed.length) * 100, ids: closed.map((c) => c.ROWID) };
   }
 
   const current = await rate(params.periodStart, params.periodEnd);
@@ -58,36 +57,30 @@ export async function capaClosedOnTimeRate(
 
 /**
  * Proportion of CAPA verifications recorded in the period with outcome = effective. Verifier is
- * always a different person from the action owner (enforced at RLS + app layer, see
- * docs/security-model.md) — this KPI is measuring whether that verification found the action
- * actually worked, not just that it was closed on time.
+ * always a different person from the action owner (enforced at the application layer now —
+ * isValidOwnerVerifierPair() in the CAPA module, not RLS, since Catalyst has no RLS equivalent) —
+ * this KPI is measuring whether that verification found the action actually worked, not just that
+ * it was closed on time.
  */
 export async function capaEffectivenessRate(
   params: KpiCalculationParams,
 ): Promise<KpiCalculationResult> {
-  const db = getDb();
-  const scopePredicate = params.propertyId
-    ? eq(capaActions.propertyId, params.propertyId)
-    : undefined;
-  const deptPredicate = params.departmentId
-    ? eq(capaActions.departmentId, params.departmentId)
-    : undefined;
+  const zcql = params.catalystApp.zcql();
+  const scope = capaScopeClause(params, "CAPA");
 
   async function rate(start: Date, end: Date) {
-    const verifications = await db
-      .select({ id: capaVerifications.id, outcome: capaVerifications.outcome })
-      .from(capaVerifications)
-      .innerJoin(capaActions, eq(capaActions.id, capaVerifications.capaId))
-      .where(
-        and(between(capaVerifications.verifiedAt, start, end), scopePredicate, deptPredicate),
-      );
+    const verifications = (await zcql.executeZCQLQuery(
+      `select CAPAVerification.ROWID, CAPAVerification.outcome
+       from CAPAVerification left join CAPA on CAPAVerification.capa_id = CAPA.ROWID
+       where ${scope} && CAPAVerification.verified_at between '${start.toISOString()}' and '${end.toISOString()}'`,
+    )) as VerificationJoinRow[];
     if (verifications.length === 0) {
-      return { value: null, ids: [] as string[] };
+      return { value: null as number | null, ids: [] as string[] };
     }
-    const effective = verifications.filter((v) => v.outcome === "effective");
+    const effective = verifications.filter((v) => v.CAPAVerification.outcome === "effective");
     return {
       value: (effective.length / verifications.length) * 100,
-      ids: verifications.map((v) => v.id),
+      ids: verifications.map((v) => v.CAPAVerification.ROWID),
     };
   }
 

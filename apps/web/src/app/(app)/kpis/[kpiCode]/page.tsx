@@ -1,13 +1,38 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
 
 import { ComparisonChart } from "./comparison-chart";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import { kpiCalculations, kpiDefinitions } from "@/db/schema";
+import { catalystAppFromHeaders } from "@/lib/catalyst/app";
 import { calculateKpi } from "@/server/kpi/calculate";
+import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
+
+/** Not `extends CatalystRow` — several fields below are genuinely nullable, which conflicts with
+ * CatalystRow's `Record<string, string>` index signature. */
+interface KpiDefinitionRow {
+  ROWID: string;
+  kpi_code: string;
+  name: string;
+  classification: string;
+  version: string;
+  definition: string;
+  formula: string;
+  source_tables: string;
+  target: string | null;
+  warning_threshold: string | null;
+  critical_threshold: string | null;
+  evidence_requirements: string | null;
+  assurance_status: string;
+}
+
+interface KpiSnapshotRow {
+  current_value: string | null;
+  comparison_value: string | null;
+  data_quality_status: string;
+  calculated_at: string;
+}
 
 export default async function KpiDetailPage({
   params,
@@ -18,31 +43,47 @@ export default async function KpiDetailPage({
 }) {
   const { kpiCode } = await params;
   const { propertyId } = await searchParams;
-  const db = getDb();
+  const ctx = await getAuthContext();
+  if (!ctx) {
+    notFound();
+  }
 
-  const [definition] = await db
-    .select()
-    .from(kpiDefinitions)
-    .where(eq(kpiDefinitions.kpiCode, kpiCode))
-    .limit(1);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+  const zcql = catalystApp.zcql();
+
+  const definitionRows = (await datastore.table("KPIDefinitions").getRows({
+    criteria: `KPIDefinitions.kpi_code == '${kpiCode}'`,
+    maxRows: 1,
+  })) as unknown as KpiDefinitionRow[];
+  const definition = definitionRows[0];
   if (!definition) {
     notFound();
   }
 
-  const result = await calculateKpi(kpiCode, { propertyId: propertyId ?? null });
-  const recentSnapshots = await db
-    .select()
-    .from(kpiCalculations)
-    .where(eq(kpiCalculations.kpiId, definition.id))
-    .orderBy(desc(kpiCalculations.calculatedAt))
-    .limit(5);
+  const selectedPropertyId = propertyId && hasPropertyAccess(ctx, propertyId) ? propertyId : null;
+
+  const result = await calculateKpi(catalystApp, ctx, kpiCode, { propertyId: selectedPropertyId });
+
+  // Recent calculation snapshots — mirrors the pre-migration query exactly: keyed only by KPI
+  // code, not scoped by property (that was true of the Postgres kpi_calculations query too), so
+  // this is preserved as-is rather than having new property scoping introduced here.
+  const snapshotRows = (await zcql.executeZCQLQuery(
+    `select KPISnapshots.current_value, KPISnapshots.comparison_value,
+            KPISnapshots.data_quality_status, KPISnapshots.calculated_at
+     from KPISnapshots where KPISnapshots.kpi_code == '${kpiCode}'
+     order by KPISnapshots.calculated_at desc limit 5`,
+  )) as Array<{ KPISnapshots: KpiSnapshotRow }>;
+  const recentSnapshots = snapshotRows.map((r) => r.KPISnapshots);
+
+  const sourceTables: string[] = definition.source_tables ? JSON.parse(definition.source_tables) : [];
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{definition.name}</h1>
         <p className="text-muted-foreground text-sm">
-          {definition.kpiCode} · {definition.classification} · v{definition.version}
+          {definition.kpi_code} · {definition.classification} · v{definition.version}
         </p>
       </div>
 
@@ -101,8 +142,7 @@ export default async function KpiDetailPage({
                 <span className="font-medium">Formula:</span> {definition.formula}
               </p>
               <p>
-                <span className="font-medium">Source tables:</span>{" "}
-                {definition.sourceTables.join(", ")}
+                <span className="font-medium">Source tables:</span> {sourceTables.join(", ")}
               </p>
               <p>
                 <span className="font-medium">Current value:</span> {result.currentValue} ·{" "}
@@ -125,16 +165,16 @@ export default async function KpiDetailPage({
               </p>
               <p>
                 <span className="font-medium">Target / warning / critical:</span>{" "}
-                {definition.target ?? "—"} / {definition.warningThreshold ?? "—"} /{" "}
-                {definition.criticalThreshold ?? "—"}
+                {definition.target ?? "—"} / {definition.warning_threshold ?? "—"} /{" "}
+                {definition.critical_threshold ?? "—"}
               </p>
               <p>
                 <span className="font-medium">Evidence requirements:</span>{" "}
-                {definition.evidenceRequirements ?? "—"}
+                {definition.evidence_requirements ?? "—"}
               </p>
               <p>
                 <span className="font-medium">Assurance status:</span>{" "}
-                {definition.assuranceStatus}
+                {definition.assurance_status}
               </p>
             </CardContent>
           </Card>
@@ -145,10 +185,10 @@ export default async function KpiDetailPage({
                 <CardTitle className="text-base">Recent calculation snapshots</CardTitle>
               </CardHeader>
               <CardContent className="text-muted-foreground flex flex-col gap-1 text-sm">
-                {recentSnapshots.map((s) => (
-                  <p key={s.id}>
-                    {new Date(s.calculatedAt).toLocaleString()}: {s.currentValue} vs{" "}
-                    {s.comparisonValue} ({s.dataQualityStatus})
+                {recentSnapshots.map((s, i) => (
+                  <p key={i}>
+                    {new Date(s.calculated_at).toLocaleString()}: {s.current_value} vs{" "}
+                    {s.comparison_value} ({s.data_quality_status})
                   </p>
                 ))}
               </CardContent>
