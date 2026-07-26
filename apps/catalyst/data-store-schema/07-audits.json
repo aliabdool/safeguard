@@ -1,18 +1,25 @@
 {
-  "_comment": "Audit programme + findings. Added in Phase 9 as a dependency of the OPEN_CRIT_MAJOR_FINDINGS KPI and the Assurance Evidence Map (Phase 10); referenced by api-dashboard-summary's getAuditStatus() since Phase 4 but not formally schema'd until now.",
+  "_comment": "Audit programme + findings. Added in Phase 9 as a dependency of the OPEN_CRIT_MAJOR_FINDINGS KPI and the Assurance Evidence Map (Phase 10); referenced by api-dashboard-summary's getAuditStatus() since Phase 4 but not formally schema'd until now. Audits.scope/criteria/planned_start/planned_end/actual_start/actual_end/created_at, AuditFindings.finding_number/evidence, and the AuditTeamMembers/AuditChecklistItems/AuditAssessments tables were added during the Supabase-to-Catalyst migration (Phase C, audits module) — present on apps/web's audits.ts/audit_checklist_items/audit_assessments/audit_team_members Drizzle tables but missing from the original Phase 9 port.",
   "tables": [
     {
       "table_name": "Audits",
       "scope": "Org",
       "columns": [
-        { "column_name": "audit_number", "type": "text", "notNull": true, "unique": true },
-        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
-        { "column_name": "audit_type", "type": "text", "notNull": true, "comment": "internal | external | department_inspection | statutory" },
+        { "column_name": "audit_number", "type": "text", "notNull": true, "unique": true, "comment": "Format AUD-{year}-{seq}; corresponds to apps/web's audits.audit_reference — named audit_number here since that predates this migration slice." },
+        { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true, "comment": "The row-scoping column — every query MUST run through propertyScopeClause()." },
+        { "column_name": "audit_type", "type": "text", "notNull": true, "comment": "self_assessment | department_inspection | internal_audit | legal_compliance_audit | iso45001_readiness | external_assurance — corrected during the Supabase-to-Catalyst migration to match the actual audit_type enum in apps/web/src/db/schema/_enums.ts; the original Phase 9 comment listed a stale value set (internal | external | department_inspection | statutory)." },
         { "column_name": "framework_id", "type": "lookup", "references": "Frameworks", "nullable": true },
         { "column_name": "lead_auditor_id", "type": "lookup", "references": "Users", "notNull": true },
-        { "column_name": "planned_date", "type": "date", "notNull": true },
-        { "column_name": "status", "type": "text", "notNull": true, "default": "planned", "comment": "planned | in_progress | closed" },
-        { "column_name": "closed_at", "type": "datetime", "nullable": true }
+        { "column_name": "planned_date", "type": "date", "notNull": true, "comment": "Unused by the ported audits module (which reads/writes planned_start/planned_end below) — left in place as-is since it predates this migration slice and nothing else has been confirmed to depend on it." },
+        { "column_name": "scope", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — present on apps/web's audits.scope, missing from the original Phase 9 port." },
+        { "column_name": "criteria", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — present on apps/web's audits.criteria, missing from the original Phase 9 port." },
+        { "column_name": "planned_start", "type": "date", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — present on apps/web's audits.planned_start, missing from the original Phase 9 port." },
+        { "column_name": "planned_end", "type": "date", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — present on apps/web's audits.planned_end, missing from the original Phase 9 port." },
+        { "column_name": "actual_start", "type": "date", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — set when an audit advances planned -> in_progress; present on apps/web's audits.actual_start, missing from the original Phase 9 port." },
+        { "column_name": "actual_end", "type": "date", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — set when an audit advances reporting -> closed; present on apps/web's audits.actual_end, missing from the original Phase 9 port." },
+        { "column_name": "status", "type": "text", "notNull": true, "default": "planned", "comment": "planned | in_progress | reporting | closed — corrected during the Supabase-to-Catalyst migration to include 'reporting' (the original Phase 9 comment omitted it, though apps/web's audit_status enum has always had it)." },
+        { "column_name": "closed_at", "type": "datetime", "nullable": true },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now", "comment": "Added during the Supabase-to-Catalyst migration — drives the AUD-{year}-{seq} sequence window and the audits list's default ordering, missing from the original Phase 9 port." }
       ]
     },
     {
@@ -20,9 +27,11 @@
       "scope": "Org",
       "columns": [
         { "column_name": "audit_id", "type": "lookup", "references": "Audits", "notNull": true },
+        { "column_name": "finding_number", "type": "text", "notNull": true, "unique": true, "comment": "Added during the Supabase-to-Catalyst migration — format FND-{year}-{seq}, present on apps/web's audit_findings.finding_number, missing from the original Phase 9 port." },
         { "column_name": "control_id", "type": "lookup", "references": "Controls", "nullable": true },
-        { "column_name": "classification", "type": "text", "notNull": true, "comment": "critical_nc | major_nc | minor_nc | observation" },
+        { "column_name": "classification", "type": "text", "notNull": true, "comment": "critical_nc | major_nc | minor_nc | observation | ofi — corrected during the Supabase-to-Catalyst migration to add 'ofi' (opportunity for improvement), which the original Phase 9 comment omitted though apps/web's finding_classification enum has always had it." },
         { "column_name": "description", "type": "text", "notNull": true },
+        { "column_name": "evidence", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — present on apps/web's audit_findings.evidence, missing from the original Phase 9 port." },
         { "column_name": "status", "type": "text", "notNull": true, "default": "open", "comment": "open | action_assigned | verified | closed" },
         { "column_name": "raised_by", "type": "lookup", "references": "Users", "notNull": true },
         { "column_name": "raised_at", "type": "datetime", "notNull": true, "default": "now" },
@@ -35,6 +44,40 @@
       "columns": [
         { "column_name": "audit_finding_id", "type": "lookup", "references": "AuditFindings", "notNull": true },
         { "column_name": "capa_id", "type": "lookup", "references": "CAPA", "notNull": true }
+      ]
+    },
+    {
+      "table_name": "AuditTeamMembers",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — ports apps/web's audit_team_members join table, missing from the original Phase 9 port. The lead auditor is inserted here with role_on_audit = 'lead_auditor' when an audit is created; additional members are added via addAuditTeamMemberAction.",
+      "columns": [
+        { "column_name": "audit_id", "type": "lookup", "references": "Audits", "notNull": true },
+        { "column_name": "user_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "role_on_audit", "type": "text", "notNull": true, "default": "team_member" }
+      ]
+    },
+    {
+      "table_name": "AuditChecklistItems",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — ports apps/web's audit_checklist_items table, missing from the original Phase 9 port.",
+      "columns": [
+        { "column_name": "audit_id", "type": "lookup", "references": "Audits", "notNull": true },
+        { "column_name": "control_id", "type": "lookup", "references": "Controls", "nullable": true },
+        { "column_name": "question", "type": "text", "notNull": true },
+        { "column_name": "criteria_reference", "type": "text", "nullable": true }
+      ]
+    },
+    {
+      "table_name": "AuditAssessments",
+      "scope": "Org",
+      "comment": "Added during the Supabase-to-Catalyst migration — ports apps/web's audit_assessments table, missing from the original Phase 9 port. One row per (checklist item, dimension) scored during a checklist walkthrough — distinct from ControlAssessments in 06-controls-frameworks.json, which is the per-property control-maturity scoring layer feeding KPIs, not per-audit checklist scoring.",
+      "columns": [
+        { "column_name": "checklist_item_id", "type": "lookup", "references": "AuditChecklistItems", "notNull": true },
+        { "column_name": "dimension", "type": "text", "notNull": true, "comment": "policy | procedure | implementation | effectiveness" },
+        { "column_name": "maturity_score", "type": "bigint", "notNull": true, "comment": "0-4" },
+        { "column_name": "evidence_reviewed", "type": "text", "nullable": true },
+        { "column_name": "assessor_id", "type": "lookup", "references": "Users", "notNull": true },
+        { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" }
       ]
     }
   ]

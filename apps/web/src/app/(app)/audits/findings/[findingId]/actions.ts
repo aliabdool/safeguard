@@ -1,11 +1,10 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
 
 import type { ActionResult } from "@/app/(auth)/actions";
-import { getDb } from "@/db";
-import { auditFindings, capaActions } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { writeAuditLog } from "@/server/audit-log";
 import { requireRole } from "@/server/permissions";
 
@@ -23,30 +22,29 @@ export async function advanceFindingStatusAction(
   }
 
   const ctx = await requireRole(["INTERNAL_AUDITOR", "GROUP_HS_ADMIN", "SUPER_ADMIN"]);
-  const db = getDb();
-  const [finding] = await db
-    .select()
-    .from(auditFindings)
-    .where(eq(auditFindings.id, findingId))
-    .limit(1);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
+
+  const findingRows = (await datastore.table("AuditFindings").getRows({
+    criteria: `AuditFindings.ROWID == '${findingId}'`,
+    maxRows: 1,
+  })) as Array<CatalystRow & { status: string }>;
+  const finding = findingRows[0];
   if (!finding) {
     return { error: "Unknown finding." };
   }
 
-  const currentIndex = STATUS_ORDER.indexOf(finding.status);
+  const currentIndex = STATUS_ORDER.indexOf(finding.status as FindingStatus);
   const targetIndex = STATUS_ORDER.indexOf(targetStatus);
   if (targetIndex !== currentIndex + 1) {
     return { error: `Cannot move from '${finding.status}' to '${targetStatus}'.` };
   }
 
   if (targetStatus === "closed") {
-    const linkedCapas = await db
-      .select({ status: capaActions.status })
-      .from(capaActions)
-      .where(
-        and(eq(capaActions.sourceType, "audit_finding"), eq(capaActions.sourceId, findingId)),
-      );
-    const openCapas = linkedCapas.filter((c) => c.status !== "closed");
+    const linkedCapaRows = (await datastore.table("CAPA").getRows({
+      criteria: `CAPA.source_type == 'audit_finding' && CAPA.source_id == '${findingId}'`,
+    })) as Array<CatalystRow & { status: string }>;
+    const openCapas = linkedCapaRows.filter((c) => c.status !== "closed");
     if (openCapas.length > 0) {
       return {
         error: "All linked corrective actions must be closed before closing this finding.",
@@ -54,15 +52,15 @@ export async function advanceFindingStatusAction(
     }
   }
 
-  await db
-    .update(auditFindings)
-    .set({ status: targetStatus })
-    .where(eq(auditFindings.id, findingId));
+  await datastore.table("AuditFindings").updateRow({
+    ROWID: findingId,
+    status: targetStatus,
+  });
 
   await writeAuditLog({
     actorId: ctx.userId,
     eventType: targetStatus === "closed" ? "finding_closed" : "status_changed",
-    entityType: "audit_findings",
+    entityType: "AuditFindings",
     entityId: findingId,
     previousValue: { status: finding.status },
     newValue: { status: targetStatus },

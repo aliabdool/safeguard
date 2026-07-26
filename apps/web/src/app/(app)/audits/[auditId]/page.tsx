@@ -1,14 +1,25 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
 
 import { AddTeamMemberForm, AuditStatusActions } from "./audit-forms";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import { auditTeamMembers, audits, profiles, properties } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
+import { listUsers } from "@/server/identity/catalyst-identity";
+
+interface AuditRow extends CatalystRow {
+  audit_number: string;
+  audit_type: string;
+  property_id: string;
+  scope: string;
+  criteria: string;
+  planned_start: string;
+  planned_end: string;
+  status: string;
+}
 
 export default async function AuditDetailPage({
   params,
@@ -17,37 +28,46 @@ export default async function AuditDetailPage({
 }) {
   const { auditId } = await params;
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
 
-  const [audit] = await db.select().from(audits).where(eq(audits.id, auditId)).limit(1);
-  if (!audit || !ctx || !hasPropertyAccess(ctx, audit.propertyId)) {
+  const auditRows = (await datastore.table("Audits").getRows({
+    criteria: `Audits.ROWID == '${auditId}'`,
+    maxRows: 1,
+  })) as AuditRow[];
+  const audit = auditRows[0];
+  if (!audit || !ctx || !hasPropertyAccess(ctx, audit.property_id)) {
     notFound();
   }
 
-  const [[property], team, allProfiles] = await Promise.all([
-    db
-      .select({ name: properties.name })
-      .from(properties)
-      .where(eq(properties.id, audit.propertyId)),
-    db
-      .select({
-        userId: auditTeamMembers.userId,
-        roleOnAudit: auditTeamMembers.roleOnAudit,
-        fullName: profiles.fullName,
-      })
-      .from(auditTeamMembers)
-      .innerJoin(profiles, eq(profiles.id, auditTeamMembers.userId))
-      .where(eq(auditTeamMembers.auditId, auditId)),
-    db.select({ id: profiles.id, fullName: profiles.fullName }).from(profiles),
+  const [propertyRows, teamRows, allUsers] = await Promise.all([
+    datastore
+      .table("Properties")
+      .getRows({ criteria: `Properties.ROWID == '${audit.property_id}'`, maxRows: 1 }),
+    catalystApp.zcql().executeZCQLQuery(
+      `select AuditTeamMembers.user_id, AuditTeamMembers.role_on_audit, Users.full_name from AuditTeamMembers left join Users on AuditTeamMembers.user_id = Users.ROWID where AuditTeamMembers.audit_id = '${auditId}'`,
+    ) as Promise<
+      Array<{
+        AuditTeamMembers: { user_id: string; role_on_audit: string };
+        Users: { full_name: string };
+      }>
+    >,
+    listUsers(catalystApp),
   ]);
+  const property = propertyRows[0];
+  const team = teamRows.map((r) => ({
+    userId: r.AuditTeamMembers.user_id,
+    roleOnAudit: r.AuditTeamMembers.role_on_audit,
+    fullName: r.Users.full_name,
+  }));
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{audit.auditReference}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{audit.audit_number}</h1>
           <p className="text-muted-foreground text-sm">
-            {audit.type.replace("_", " ")} · {property?.name}
+            {audit.audit_type.replace("_", " ")} · {property?.name}
           </p>
         </div>
         <Badge>{audit.status.replace("_", " ")}</Badge>
@@ -77,14 +97,14 @@ export default async function AuditDetailPage({
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
           <p>
-            <span className="font-medium">Scope:</span> {audit.scope ?? "—"}
+            <span className="font-medium">Scope:</span> {audit.scope || "—"}
           </p>
           <p>
-            <span className="font-medium">Criteria:</span> {audit.criteria ?? "—"}
+            <span className="font-medium">Criteria:</span> {audit.criteria || "—"}
           </p>
           <p>
-            <span className="font-medium">Planned:</span> {audit.plannedStart ?? "—"} to{" "}
-            {audit.plannedEnd ?? "—"}
+            <span className="font-medium">Planned:</span> {audit.planned_start || "—"} to{" "}
+            {audit.planned_end || "—"}
           </p>
         </CardContent>
       </Card>
@@ -94,7 +114,10 @@ export default async function AuditDetailPage({
           <CardTitle className="text-base">Audit team</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <AddTeamMemberForm auditId={auditId} users={allProfiles} />
+          <AddTeamMemberForm
+            auditId={auditId}
+            users={allUsers.map((u) => ({ id: u.id, fullName: u.fullName }))}
+          />
           <ul className="text-sm">
             {team.map((t) => (
               <li key={t.userId}>

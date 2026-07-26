@@ -1,14 +1,32 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
 
 import { FindingStatusActions } from "./status-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDb } from "@/db";
-import { auditFindings, audits, capaActions } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
+
+interface FindingRow extends CatalystRow {
+  audit_id: string;
+  finding_number: string;
+  classification: string;
+  description: string;
+  evidence: string;
+  status: string;
+}
+
+interface AuditRow extends CatalystRow {
+  audit_number: string;
+  property_id: string;
+}
+
+interface CapaRow extends CatalystRow {
+  capa_number: string;
+  status: string;
+}
 
 export default async function FindingDetailPage({
   params,
@@ -17,39 +35,38 @@ export default async function FindingDetailPage({
 }) {
   const { findingId } = await params;
   const ctx = await getAuthContext();
-  const db = getDb();
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
 
-  const [finding] = await db
-    .select()
-    .from(auditFindings)
-    .where(eq(auditFindings.id, findingId))
-    .limit(1);
+  const findingRows = (await datastore.table("AuditFindings").getRows({
+    criteria: `AuditFindings.ROWID == '${findingId}'`,
+    maxRows: 1,
+  })) as FindingRow[];
+  const finding = findingRows[0];
   if (!finding) {
     notFound();
   }
-  const [audit] = await db
-    .select()
-    .from(audits)
-    .where(eq(audits.id, finding.auditId))
-    .limit(1);
-  if (!audit || !ctx || !hasPropertyAccess(ctx, audit.propertyId)) {
+
+  const auditRows = (await datastore.table("Audits").getRows({
+    criteria: `Audits.ROWID == '${finding.audit_id}'`,
+    maxRows: 1,
+  })) as AuditRow[];
+  const audit = auditRows[0];
+  if (!audit || !ctx || !hasPropertyAccess(ctx, audit.property_id)) {
     notFound();
   }
 
-  const linkedCapas = await db
-    .select()
-    .from(capaActions)
-    .where(
-      and(eq(capaActions.sourceType, "audit_finding"), eq(capaActions.sourceId, findingId)),
-    );
+  const linkedCapas = (await datastore.table("CAPA").getRows({
+    criteria: `CAPA.source_type == 'audit_finding' && CAPA.source_id == '${findingId}'`,
+  })) as CapaRow[];
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{finding.findingNumber}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{finding.finding_number}</h1>
           <p className="text-muted-foreground text-sm">
-            {audit.auditReference} · {finding.classification.replace("_", " ")}
+            {audit.audit_number} · {finding.classification.replace("_", " ")}
           </p>
         </div>
         <Badge>{finding.status.replace("_", " ")}</Badge>
@@ -88,9 +105,9 @@ export default async function FindingDetailPage({
           </Button>
           <ul className="text-sm">
             {linkedCapas.map((c) => (
-              <li key={c.id}>
-                <Link href={`/capa/${c.id}`} className="underline underline-offset-4">
-                  {c.actionNumber}
+              <li key={c.ROWID}>
+                <Link href={`/capa/${c.ROWID}`} className="underline underline-offset-4">
+                  {c.capa_number}
                 </Link>{" "}
                 — {c.status.replace("_", " ")}
               </li>
