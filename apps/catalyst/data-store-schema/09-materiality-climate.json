@@ -1,5 +1,5 @@
 {
-  "_comment": "Full materiality/climate-risk persistence — expanded from the Phase 11 minimal scope (data-quality exceptions 8 and 9) to full parity with apps/web's materiality.ts/climate-risk.ts as part of the Supabase-to-Catalyst migration. Scoring logic stays in functions/shared/pure/materiality-scoring.ts and climate-risk.ts; these tables now hold every field that logic reads/writes, not just the data-quality-check subset.",
+  "_comment": "Full materiality/climate-risk persistence — expanded from the Phase 11 minimal scope (data-quality exceptions 8 and 9) to full parity with apps/web's materiality.ts/climate-risk.ts as part of the Supabase-to-Catalyst migration. Scoring logic stays in functions/shared/pure/materiality-scoring.ts and climate-risk.ts; these tables now hold every field that logic reads/writes, not just the data-quality-check subset. MaterialTopics/MaterialityConsultations already matched apps/web's schema field-for-field; ClimateRisks did not (see its own comment below) and was completed during the apps/web Phase C reports/materiality/climate-risk slice.",
   "tables": [
     {
       "table_name": "MaterialTopics",
@@ -60,14 +60,32 @@
     {
       "table_name": "ClimateRisks",
       "scope": "Org",
-      "comment": "IFRS S2 climate-related H&S risks ONLY — heat stress, extreme-weather exposure, wildfire smoke, etc. Never ordinary incidents.",
+      "comment": "IFRS S2 climate-related H&S risks ONLY — heat stress, extreme-weather exposure, wildfire smoke, etc. Never ordinary incidents. hazard_type/likelihood_score/impact_score/residual_risk_score are the original Phase 11 minimal-scope columns (kept as-is — other Functions already read them); every other column below was added during the Supabase-to-Catalyst migration to reach actual full parity with apps/web's climate-risk.ts (category, description, exposure/vulnerability/existing_controls narrative fields, time_horizon, financial_effect, currency, adaptation_action, responsible_owner, scenario_assumptions, resilience_conclusion, status/assessed_by/approved_by/approved_at, created_at/updated_at were all missing from the original port despite the file header's earlier claim of full parity).",
       "columns": [
-        { "column_name": "hazard_type", "type": "text", "notNull": true },
+        { "column_name": "hazard_type", "type": "text", "notNull": true, "comment": "One of the climate_hazard values (climateHazardEnum) — the specific hazard, e.g. 'cyclone', 'heat_stress'." },
         { "column_name": "property_id", "type": "lookup", "references": "Properties", "notNull": true },
+        { "column_name": "category", "type": "enum", "values": ["acute_physical", "chronic_physical", "transition"], "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port. Must agree with hazard_type per categoryForHazard() in the ported climate-risk.ts pure logic." },
+        { "column_name": "description", "type": "text", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "exposure", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "vulnerability", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "existing_controls", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
         { "column_name": "likelihood_score", "type": "bigint", "nullable": true },
         { "column_name": "impact_score", "type": "bigint", "nullable": true },
         { "column_name": "residual_risk_score", "type": "decimal", "nullable": true, "comment": "Null triggers the 'climate risk missing residual risk score' data-quality exception." },
-        { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" }
+        { "column_name": "time_horizon", "type": "enum", "values": ["short_term", "medium_term", "long_term"], "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "financial_effect", "type": "decimal", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "currency", "type": "text", "notNull": true, "default": "MUR", "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "adaptation_action", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "responsible_owner", "type": "lookup", "references": "Users", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "scenario_assumptions", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "resilience_conclusion", "type": "text", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "status", "type": "enum", "values": ["draft", "under_review", "approved"], "notNull": true, "default": "draft", "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "assessed_by", "type": "lookup", "references": "Users", "notNull": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "assessed_at", "type": "datetime", "notNull": true, "default": "now" },
+        { "column_name": "approved_by", "type": "lookup", "references": "Users", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "approved_at", "type": "datetime", "nullable": true, "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "created_at", "type": "datetime", "notNull": true, "default": "now", "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." },
+        { "column_name": "updated_at", "type": "datetime", "notNull": true, "default": "now", "comment": "Added during the Supabase-to-Catalyst migration — missing from the original port." }
       ]
     }
   ]

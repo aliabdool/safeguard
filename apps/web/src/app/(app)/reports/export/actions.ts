@@ -1,10 +1,8 @@
 "use server";
 
 import { headers } from "next/headers";
-import { inArray } from "drizzle-orm";
 
-import { getDb } from "@/db";
-import { incidents, properties } from "@/db/schema";
+import { catalystAppFromHeaders, type CatalystApp, type CatalystRow } from "@/lib/catalyst/app";
 import { writeAuditLog } from "@/server/audit-log";
 import { hasPropertyAccess, requireRole } from "@/server/permissions";
 import { recentFinancialYears } from "@/server/kpi/period";
@@ -23,13 +21,42 @@ const EXPORT_ROLES = [
   "EXECUTIVE_READONLY",
 ] as const;
 
+/**
+ * Every export writes exactly one row to Catalyst's ReportExports table — in addition to the
+ * usual AuditTrail entry via writeAuditLog — mirroring recordExport() in
+ * apps/catalyst/functions/shared/services/report-service.ts (built for the standalone Catalyst
+ * client). Nothing pre-migration wrote an equivalent row (there was no reportExports Drizzle
+ * table), so this is new behaviour added to reach parity with that already-proven pattern, not a
+ * change to any existing feature.
+ */
+async function recordReportExport(
+  catalystApp: CatalystApp,
+  reportType: string,
+  exportedBy: string,
+  filters: Record<string, unknown>,
+  recordCount: number,
+) {
+  await catalystApp.datastore().table("ReportExports").insertRow({
+    report_type: reportType,
+    exported_by: exportedBy,
+    filters_json: JSON.stringify(filters),
+    record_count: recordCount,
+  });
+}
+
 /** Resolves an fy label (e.g. "FY2026") + optional property to the same scope the dashboard uses. */
-async function resolveScope(fyLabel: string | null, propertyId: string | null) {
+async function resolveScope(
+  catalystApp: CatalystApp,
+  fyLabel: string | null,
+  propertyId: string | null,
+) {
   const ctx = await requireRole([...EXPORT_ROLES]);
-  const db = getDb();
-  const allProperties = await db.select({ id: properties.id }).from(properties);
+  const propertyRows = (await catalystApp
+    .datastore()
+    .table("Properties")
+    .getRows({})) as CatalystRow[];
   const visiblePropertyIds = new Set(
-    allProperties.filter((p) => hasPropertyAccess(ctx, p.id)).map((p) => p.id),
+    propertyRows.filter((p) => hasPropertyAccess(ctx, p.ROWID)).map((p) => p.ROWID),
   );
   const scopedPropertyId =
     propertyId && visiblePropertyIds.has(propertyId) ? propertyId : null;
@@ -45,31 +72,45 @@ function toCsvValue(value: unknown): string {
   return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 }
 
+interface IncidentCsvRow extends CatalystRow {
+  incident_number: string;
+  property_id: string;
+  occurred_at: string;
+  person_event_type: string;
+  incident_type: string;
+  outcome: string;
+  actual_severity: string;
+  potential_severity: string;
+  status: string;
+  lost_workdays: string;
+  incident_cost: string;
+}
+
 /**
  * Server Action returning CSV text — export is permission-controlled the same way every other
  * read is (property access), and every export is an audit_log event per docs/security-model.md.
- * Deliberately excludes medical detail entirely: this queries `incidents`, never
- * `medical_records`, so there's no code path here that could leak clinical data into an export.
+ * Deliberately excludes medical detail entirely: this queries `Incidents`, never `MedicalNotes`,
+ * so there's no code path here that could leak clinical data into an export.
  */
 export async function exportIncidentsCsvAction(): Promise<string> {
   const ctx = await requireRole([...EXPORT_ROLES]);
+  const catalystApp = catalystAppFromHeaders(await headers());
+  const datastore = catalystApp.datastore();
 
-  const db = getDb();
-  const allProperties = await db
-    .select({ id: properties.id, name: properties.name })
-    .from(properties);
-  const visiblePropertyIds = allProperties
-    .filter((p) => hasPropertyAccess(ctx, p.id))
-    .map((p) => p.id);
-  const propertyName = new Map(allProperties.map((p) => [p.id, p.name]));
+  const propertyRows = (await datastore.table("Properties").getRows({})) as Array<
+    CatalystRow & { name: string }
+  >;
+  const visiblePropertyIds = propertyRows
+    .filter((p) => hasPropertyAccess(ctx, p.ROWID))
+    .map((p) => p.ROWID);
+  const propertyName = new Map(propertyRows.map((p) => [p.ROWID, p.name]));
 
-  const rows =
+  const rows: IncidentCsvRow[] =
     visiblePropertyIds.length === 0
       ? []
-      : await db
-          .select()
-          .from(incidents)
-          .where(inArray(incidents.propertyId, visiblePropertyIds));
+      : ((await datastore.table("Incidents").getRows({
+          criteria: `Incidents.property_id in ('${visiblePropertyIds.join("', '")}')`,
+        })) as IncidentCsvRow[]);
 
   const headerRow = [
     "incident_number",
@@ -88,22 +129,24 @@ export async function exportIncidentsCsvAction(): Promise<string> {
   for (const r of rows) {
     csvLines.push(
       [
-        r.incidentNumber,
-        propertyName.get(r.propertyId) ?? "",
-        r.occurredAt.toISOString(),
-        r.personType,
-        r.incidentType,
+        r.incident_number,
+        propertyName.get(r.property_id) ?? "",
+        r.occurred_at,
+        r.person_event_type,
+        r.incident_type,
         r.outcome,
-        r.actualSeverity,
-        r.potentialSeverity,
+        r.actual_severity,
+        r.potential_severity,
         r.status,
-        r.lostWorkdays,
-        r.incidentCost,
+        r.lost_workdays,
+        r.incident_cost,
       ]
         .map(toCsvValue)
         .join(","),
     );
   }
+
+  await recordReportExport(catalystApp, "incident_export", ctx.userId, {}, rows.length);
 
   const h = await headers();
   await writeAuditLog({
@@ -127,13 +170,22 @@ export async function generateBoardNarrativeAction(
   fyLabel: string | null,
   propertyId: string | null,
 ): Promise<string> {
+  const catalystApp = catalystAppFromHeaders(await headers());
   const {
     ctx,
     propertyId: scopedPropertyId,
     asOfAnchor,
-  } = await resolveScope(fyLabel, propertyId);
-  const input = await gatherBoardNarrativeInput(scopedPropertyId, asOfAnchor);
+  } = await resolveScope(catalystApp, fyLabel, propertyId);
+  const input = await gatherBoardNarrativeInput(catalystApp, scopedPropertyId, asOfAnchor);
   const narrative = generateBoardNarrative(input);
+
+  await recordReportExport(
+    catalystApp,
+    "board_narrative",
+    ctx.userId,
+    { propertyId: scopedPropertyId, fyLabel: input.fyLabel },
+    input.kpis.length,
+  );
 
   const h = await headers();
   await writeAuditLog({
@@ -157,13 +209,22 @@ export async function generateAssurancePackAction(
   fyLabel: string | null,
   propertyId: string | null,
 ): Promise<string> {
+  const catalystApp = catalystAppFromHeaders(await headers());
   const {
     ctx,
     propertyId: scopedPropertyId,
     asOfAnchor,
-  } = await resolveScope(fyLabel, propertyId);
-  const input = await gatherAssurancePackInput(scopedPropertyId, asOfAnchor);
+  } = await resolveScope(catalystApp, fyLabel, propertyId);
+  const input = await gatherAssurancePackInput(catalystApp, scopedPropertyId, asOfAnchor);
   const pack = buildAssurancePackMarkdown(input);
+
+  await recordReportExport(
+    catalystApp,
+    "assurance_pack",
+    ctx.userId,
+    { propertyId: scopedPropertyId, fyLabel: input.fyLabel },
+    input.kpis.length + input.openFindings.length,
+  );
 
   const h = await headers();
   await writeAuditLog({

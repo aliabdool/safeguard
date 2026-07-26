@@ -1,15 +1,6 @@
 import "server-only";
 
-import { and, eq, isNull, lte } from "drizzle-orm";
-
-import { getDb } from "@/db";
-import {
-  capaActions,
-  documentVersions,
-  documents,
-  notifications,
-  scheduledReminders,
-} from "@/db/schema";
+import { catalystAdminApp, type CatalystApp, type CatalystRow } from "@/lib/catalyst/app";
 
 const REMINDER_COPY: Record<string, { title: string; body: (entityLabel: string) => string }> =
   {
@@ -23,56 +14,74 @@ const REMINDER_COPY: Record<string, { title: string; body: (entityLabel: string)
     },
   };
 
+interface ReminderRow extends CatalystRow {
+  related_entity_type: string;
+  related_entity_id: string;
+  reminder_type: string;
+}
+
 /**
  * Called by /api/cron/reminders (Cloudflare Cron Trigger). Processes every due, unsent
- * scheduled_reminders row into an in-app notification for the responsible user, then marks it
- * sent. Idempotent per row (sentAt gate) so a retried cron invocation can't double-notify.
+ * ScheduledReminders row into an in-app Notifications row for the responsible user, then marks it
+ * sent. Idempotent per row (sent_at gate) so a retried cron invocation can't double-notify.
+ *
+ * Uses catalystAdminApp() — this route runs with no browser session, only the shared CRON_SECRET
+ * header checked in src/server/cron/auth.ts.
+ *
+ * NOTE: ScheduledReminders rows are still only ever written by the CAPA and Documents modules'
+ * own Server Actions (src/app/(app)/capa/actions.ts, src/app/(app)/documents/actions.ts) — those
+ * are out of scope for this migration slice and, as of this change, still write to Postgres via
+ * Drizzle until their own Phase C migration lands. Until then this job will simply find no rows in
+ * Catalyst's ScheduledReminders table; that is an expected transitional gap between parallel
+ * migration slices, not a regression introduced here.
  */
 export async function processDueReminders(
   now: Date = new Date(),
 ): Promise<{ processed: number }> {
-  const db = getDb();
+  const catalystApp = catalystAdminApp();
+  const datastore = catalystApp.datastore();
 
-  const due = await db
-    .select()
-    .from(scheduledReminders)
-    .where(and(lte(scheduledReminders.remindAt, now), isNull(scheduledReminders.sentAt)));
+  const due = (await datastore.table("ScheduledReminders").getRows({
+    criteria: `ScheduledReminders.remind_at <= '${now.toISOString()}' && ScheduledReminders.sent_at is null`,
+  })) as ReminderRow[];
 
   let processed = 0;
 
   for (const reminder of due) {
     const recipient = await resolveRecipient(
-      reminder.relatedEntityType,
-      reminder.relatedEntityId,
+      catalystApp,
+      reminder.related_entity_type,
+      reminder.related_entity_id,
     );
     if (!recipient) {
       // Entity was deleted or has no resolvable owner — mark sent anyway so it doesn't retry
       // forever; nothing left to notify.
-      await db
-        .update(scheduledReminders)
-        .set({ sentAt: now })
-        .where(eq(scheduledReminders.id, reminder.id));
+      await datastore.table("ScheduledReminders").updateRow({
+        ROWID: reminder.ROWID,
+        sent_at: now.toISOString(),
+      });
       continue;
     }
 
-    const copy = REMINDER_COPY[reminder.reminderType] ?? {
+    const copy = REMINDER_COPY[reminder.reminder_type] ?? {
       title: "Reminder",
       body: () => "You have a pending item to review.",
     };
 
-    await db.insert(notifications).values({
-      userId: recipient.userId,
-      type: reminder.reminderType,
+    await datastore.table("Notifications").insertRow({
+      recipient_user_id: recipient.userId,
+      notification_type: reminder.reminder_type,
       title: copy.title,
-      body: copy.body(recipient.label),
-      relatedEntityType: reminder.relatedEntityType,
-      relatedEntityId: reminder.relatedEntityId,
+      message: copy.body(recipient.label),
+      entity_type: reminder.related_entity_type,
+      entity_id: reminder.related_entity_id,
+      severity: "info",
     });
 
-    await db
-      .update(scheduledReminders)
-      .set({ sentAt: now })
-      .where(eq(scheduledReminders.id, reminder.id));
+    await datastore.table("ScheduledReminders").updateRow({
+      ROWID: reminder.ROWID,
+      sent_at: now.toISOString(),
+    });
     processed += 1;
   }
 
@@ -80,28 +89,27 @@ export async function processDueReminders(
 }
 
 async function resolveRecipient(
+  catalystApp: CatalystApp,
   entityType: string,
   entityId: string,
 ): Promise<{ userId: string; label: string } | null> {
-  const db = getDb();
+  const datastore = catalystApp.datastore();
 
   if (entityType === "capa_actions") {
-    const [row] = await db
-      .select({ userId: capaActions.ownerId, label: capaActions.actionNumber })
-      .from(capaActions)
-      .where(eq(capaActions.id, entityId))
-      .limit(1);
-    return row ?? null;
+    const rows = (await datastore.table("CAPA").getRows({
+      criteria: `CAPA.ROWID == '${entityId}'`,
+      maxRows: 1,
+    })) as Array<CatalystRow & { owner_id: string; capa_number: string }>;
+    const row = rows[0];
+    return row ? { userId: row.owner_id, label: row.capa_number } : null;
   }
 
   if (entityType === "document_versions") {
-    const [row] = await db
-      .select({ userId: documents.ownerId, label: documents.title })
-      .from(documentVersions)
-      .innerJoin(documents, eq(documents.id, documentVersions.documentId))
-      .where(eq(documentVersions.id, entityId))
-      .limit(1);
-    return row ?? null;
+    const rows = (await catalystApp.zcql().executeZCQLQuery(
+      `select Documents.owner_id, Documents.title from DocumentVersions left join Documents on DocumentVersions.document_id = Documents.ROWID where DocumentVersions.ROWID == '${entityId}'`,
+    )) as Array<{ Documents: { owner_id: string; title: string } | null }>;
+    const doc = rows[0]?.Documents;
+    return doc ? { userId: doc.owner_id, label: doc.title } : null;
   }
 
   return null;
