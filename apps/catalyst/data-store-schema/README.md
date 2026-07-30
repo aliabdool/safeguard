@@ -38,7 +38,9 @@ deliverable) for the enforcement pattern once it lands.
   notifications tables, and MedicalNotes' treatment_details/practitioner_name columns, were added
   during the Supabase-to-Catalyst migration — missing from the original Phase 5 port)
 - `04-capa.json` — CAPA, CAPAProgressNotes, CAPAVerification (owner_id/verifier_id must always
-  differ — enforced in `functions/shared/pure/capa-workflow.ts`; CAPA.priority, root_cause,
+  differ — enforced in `functions/shared/pure/capa-workflow.ts`; CAPA.capa_priority (named
+  capa_priority, not priority — Catalyst rejects "priority" as a reserved column-name keyword),
+  root_cause,
   corrective_action, preventive_action, hierarchy_of_control, cost, required_evidence,
   effectiveness_review_date, final_approved_by and final_approved_at were added during the
   Supabase-to-Catalyst migration — missing from the original Phase 6 port)

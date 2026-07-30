@@ -17,7 +17,7 @@ interface CapaRow extends CatalystRow {
   verifier_id: string;
   due_date: string;
   status: string;
-  priority: string;
+  capa_priority: string;
   root_cause: string;
   corrective_action: string;
   preventive_action: string;
@@ -107,7 +107,7 @@ export default async function CapaDetailPage({
             </p>
           ) : null}
           <p>
-            <span className="font-medium">Priority:</span> {capa.priority} ·{" "}
+            <span className="font-medium">Priority:</span> {capa.capa_priority} ·{" "}
             <span className="font-medium">Due:</span> {capa.due_date}
           </p>
         </CardContent>

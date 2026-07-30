@@ -114,7 +114,7 @@ export async function createCapaAction(
         verifier_id: data.verificationOwnerId,
         due_date: data.dueDate,
         status: "open",
-        priority: data.priority,
+        capa_priority: data.priority,
         root_cause: data.rootCause ?? null,
         corrective_action: data.correctiveAction ?? null,
         preventive_action: data.preventiveAction ?? null,

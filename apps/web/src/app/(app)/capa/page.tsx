@@ -31,7 +31,7 @@ interface CapaRow extends CatalystRow {
   capa_number: string;
   property_id: string;
   source_type: string;
-  priority: string;
+  capa_priority: string;
   due_date: string;
   status: string;
   created_at: string;
@@ -99,7 +99,7 @@ export default async function CapaListPage() {
                 </TableCell>
                 <TableCell>{capa.source_type.replace("_", " ")}</TableCell>
                 <TableCell>{propertyName.get(capa.property_id) ?? "—"}</TableCell>
-                <TableCell>{capa.priority}</TableCell>
+                <TableCell>{capa.capa_priority}</TableCell>
                 <TableCell>{capa.due_date}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_VARIANT[capa.status] ?? "default"}>
