@@ -264,6 +264,8 @@ export async function createIncidentAction(
         incident_cost: data.incidentCost,
         business_interruption_days: data.businessInterruptionDays,
         immediate_actions: data.immediateActions ?? null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
       incidentId = String(created.ROWID);
     } catch (err) {
@@ -375,6 +377,7 @@ export async function recordIncidentNotificationAction(
     notified_party: parsed.data.notifiedParty,
     method: parsed.data.method ?? null,
     notified_by: ctx.userId,
+    notified_at: new Date().toISOString(),
   });
 
   revalidatePath(`/incidents/${parsed.data.incidentId}`);

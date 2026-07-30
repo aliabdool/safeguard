@@ -58,6 +58,8 @@ export async function createDocumentAction(
     confidentiality_level: data.confidentialityLevel,
     retention_period_months: data.retentionPeriodMonths ?? null,
     status: "draft",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   });
   const documentId = String(created.ROWID);
 
@@ -198,6 +200,7 @@ export async function approveDocumentVersionAction(
     approver_id: ctx.userId,
     outcome: "approved",
     notes: parsed.data.comment ?? null,
+    decided_at: new Date().toISOString(),
   });
 
   await writeAuditLog({
@@ -258,6 +261,7 @@ export async function addEvidenceLinkAction(
     page_or_section: parsed.data.pageOrSection ?? null,
     reporting_period: parsed.data.reportingPeriod ?? null,
     linked_by: ctx.userId,
+    linked_at: new Date().toISOString(),
   });
 
   await writeAuditLog({

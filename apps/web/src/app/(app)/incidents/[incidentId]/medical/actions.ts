@@ -48,6 +48,7 @@ export async function createMedicalRecordAction(
     treatment_details: parsed.data.treatmentDetails ?? null,
     practitioner_name: parsed.data.practitionerName ?? null,
     created_by: ctx.userId,
+    created_at: new Date().toISOString(),
   });
 
   // Deliberately no clinical content in the audit log — only that an access/write event

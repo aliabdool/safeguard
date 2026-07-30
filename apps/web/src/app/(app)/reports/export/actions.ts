@@ -41,6 +41,7 @@ async function recordReportExport(
     exported_by: exportedBy,
     filters_json: JSON.stringify(filters),
     record_count: recordCount,
+    exported_at: new Date().toISOString(),
   });
 }
 

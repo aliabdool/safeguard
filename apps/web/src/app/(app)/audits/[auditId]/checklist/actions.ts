@@ -73,6 +73,7 @@ export async function addChecklistAssessmentAction(
     maturity_score: parsed.data.maturityScore,
     evidence_reviewed: parsed.data.evidenceReviewed ?? null,
     assessor_id: ctx.userId,
+    assessed_at: new Date().toISOString(),
   });
 
   revalidatePath(`/audits/${parsed.data.auditId}/checklist`);

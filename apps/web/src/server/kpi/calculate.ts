@@ -208,6 +208,7 @@ export async function calculateKpi(
       variance_abs: variance.absolute,
       variance_pct: variance.percent,
       calculated_by: ctx.userId,
+      calculated_at: new Date().toISOString(),
     }),
   );
 

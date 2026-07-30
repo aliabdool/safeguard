@@ -100,6 +100,7 @@ export async function createControlAssessmentAction(
       maturity_score: data.maturityScore,
       is_critical_gap: criticalGap,
       assessed_by: ctx.userId,
+      assessed_at: new Date().toISOString(),
       notes: data.notes ?? null,
     });
   }

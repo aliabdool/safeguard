@@ -72,5 +72,6 @@ export async function writeAuditLog(input: WriteAuditLogInput) {
     request_id: input.requestId ?? null,
     ip_address: input.ipAddress ?? null,
     user_agent: input.userAgent ?? null,
+    occurred_at: new Date().toISOString(),
   });
 }

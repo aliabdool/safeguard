@@ -122,6 +122,8 @@ export async function createCapaAction(
         cost: data.cost != null ? data.cost : null,
         required_evidence: data.requiredEvidence ?? null,
         created_by: ctx.userId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
       capaId = String(created.ROWID);
     } catch (err) {
@@ -210,6 +212,7 @@ export async function verifyCapaAction(
     // uses for its unrelated (and not-yet-live) Catalyst Function workflow.
     outcome: parsed.data.outcome,
     notes: parsed.data.comment ?? null,
+    verified_at: new Date().toISOString(),
   });
 
   await datastore.table("CAPA").updateRow({

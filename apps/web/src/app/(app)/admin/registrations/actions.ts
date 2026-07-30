@@ -72,6 +72,7 @@ export async function approveRegistrationAction(
     user_id: data.userId,
     role_id: data.roleId,
     granted_by: admin.userId,
+    granted_at: nowIso,
   });
 
   for (const propertyId of data.propertyIds) {
@@ -79,6 +80,7 @@ export async function approveRegistrationAction(
       user_id: data.userId,
       property_id: propertyId,
       granted_by: admin.userId,
+      granted_at: nowIso,
     });
 
     for (const departmentId of data.departmentIds) {
@@ -99,6 +101,7 @@ export async function approveRegistrationAction(
       user_id: data.userId,
       permission_code: "view_medical_notes",
       granted_by: admin.userId,
+      granted_at: nowIso,
       reason: data.medicalPermissionReason ?? "",
     });
   }

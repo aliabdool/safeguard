@@ -76,6 +76,7 @@ export async function processDueReminders(
       entity_type: reminder.related_entity_type,
       entity_id: reminder.related_entity_id,
       severity: "info",
+      created_at: now.toISOString(),
     });
 
     await datastore.table("ScheduledReminders").updateRow({

@@ -58,6 +58,7 @@ export async function assignInvestigatorAction(
       incident_id: parsed.data.incidentId,
       investigator_id: parsed.data.investigatorId,
       status: "assigned",
+      assigned_at: new Date().toISOString(),
     });
   }
 
@@ -277,6 +278,7 @@ export async function approveInvestigationAction(
     approver_id: ctx.userId,
     decision: parsed.data.decision,
     comment: parsed.data.comment ?? null,
+    decided_at: new Date().toISOString(),
   });
 
   await datastore.table("IncidentInvestigation").updateRow({
