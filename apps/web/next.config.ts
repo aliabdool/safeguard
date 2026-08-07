@@ -46,6 +46,13 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // Produces a minimal, self-contained .next/standalone/ output (server.js + only the node_modules
+  // subset actually required at runtime) instead of needing the full node_modules tree deployed
+  // alongside the app. This is what makes a manual-upload target like Zoho Catalyst AppSail
+  // practical — see docs/2026-07-zoho-catalyst-migration-plan.md Batch 15. Orthogonal to the
+  // Cloudflare (`cf:*` npm scripts / @opennextjs/cloudflare) deployment path, which ignores this
+  // setting entirely.
+  output: "standalone",
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
