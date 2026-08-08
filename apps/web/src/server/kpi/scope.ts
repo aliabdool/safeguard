@@ -13,11 +13,16 @@ import { isAdmin, type AuthContext } from "@/server/permissions";
  * propertyScopeClause() in apps/catalyst/functions/shared/middleware/require-permission.ts.
  */
 export function propertyScopeClause(column: string, ctx: AuthContext): string {
+  // Bare literal tautologies ("1=1"/"1=0") are rejected by ZCQL with a bare "Syntax error in
+  // given query" — confirmed live against the deployed project (see chat): every scoped query for
+  // an admin/EXECUTIVE_READONLY session (which never supplies an explicit property filter) was
+  // silently broken by this. ZCQL requires an actual column reference, so the same always-true /
+  // always-false semantics are expressed against `column` itself instead.
   if (isAdmin(ctx) || ctx.roleCodes.includes("EXECUTIVE_READONLY")) {
-    return "1=1";
+    return `${column} is not null`;
   }
   if (ctx.propertyIds.length === 0) {
-    return "1=0";
+    return `${column} = '0'`;
   }
   return `${column} in (${ctx.propertyIds.map((id) => `'${id}'`).join(",")})`;
 }
