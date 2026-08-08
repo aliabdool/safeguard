@@ -22,6 +22,7 @@ import type { BoardNarrativeInput } from "./board-narrative";
  */
 const SYSTEM_CTX: AuthContext = {
   userId: "system-reporting",
+  fullName: "System (reporting)",
   status: "active",
   roleCodes: ["SUPER_ADMIN"],
   propertyIds: [],

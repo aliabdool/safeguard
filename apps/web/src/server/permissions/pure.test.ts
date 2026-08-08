@@ -16,6 +16,7 @@ const DEPT_FRONT_OFFICE = "44444444-4444-4444-4444-444444444444";
 function makeCtx(overrides: Partial<AuthContext> = {}): AuthContext {
   return {
     userId: "user-1",
+    fullName: "Test User",
     status: "active",
     roleCodes: [],
     propertyIds: [],

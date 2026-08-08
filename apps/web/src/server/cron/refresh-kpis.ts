@@ -18,6 +18,7 @@ import type { AuthContext } from "@/server/permissions";
  */
 const SYSTEM_CTX: AuthContext = {
   userId: "system-cron",
+  fullName: "System (cron)",
   status: "active",
   roleCodes: ["SUPER_ADMIN"],
   propertyIds: [],

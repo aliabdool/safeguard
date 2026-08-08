@@ -20,6 +20,7 @@ export type RoleCode =
 
 export interface AuthContext {
   userId: string;
+  fullName: string;
   status: "pending_approval" | "active" | "suspended" | "rejected";
   roleCodes: RoleCode[];
   propertyIds: string[];

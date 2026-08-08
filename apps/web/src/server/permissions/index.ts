@@ -30,6 +30,7 @@ const MEDICAL_PERMISSION_CODES = [
 
 interface UserRow extends Record<string, string> {
   ROWID: string;
+  full_name: string;
   status: "pending_approval" | "active" | "suspended" | "rejected";
 }
 
@@ -66,6 +67,7 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
   if (userRow.status !== "active") {
     return {
       userId: userRow.ROWID,
+      fullName: userRow.full_name ?? "Unknown user",
       status: userRow.status,
       roleCodes: [],
       propertyIds: [],
@@ -101,6 +103,7 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
 
   return {
     userId: userRow.ROWID,
+    fullName: userRow.full_name ?? "Unknown user",
     status: "active",
     roleCodes: (roleRows as Array<{ Roles: { code: RoleCode } }>).map((r) => r.Roles.code),
     propertyIds: (propertyRows as unknown as Array<{ property_id: string }>).map(
