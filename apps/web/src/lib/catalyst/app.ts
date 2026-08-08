@@ -49,6 +49,57 @@ function headersToPlainObject(headersList: Headers): Record<string, string> {
   return Object.fromEntries(headersList.entries());
 }
 
+/** The real zcatalyst-sdk-node surface actually invoked below — deliberately untyped/minimal since
+ * the package ships no usable public types for these; see wrapCatalystApp() for why this differs
+ * from our own hand-typed `CatalystApp` above. */
+interface RawCatalystApp {
+  userManagement(): CatalystApp["userManagement"] extends () => infer R ? R : never;
+  datastore(): { table(name: string): RawTable };
+  zcql(): { executeZCQLQuery(query: string): Promise<Array<Record<string, Record<string, unknown>>>> };
+}
+interface RawTable {
+  insertRow(row: Record<string, unknown>): Promise<Record<string, unknown>>;
+  updateRow(row: Record<string, unknown> & { ROWID: string }): Promise<Record<string, unknown>>;
+}
+
+/**
+ * The real SDK's `Table` class has no `getRows()`/criteria-filtering method at all (only
+ * `getRow(id)`, `getAllRows()`, `getPagedRows()`, `getIterableRows()`, none of which accept a WHERE
+ * -style filter) — confirmed by reading node_modules/zcatalyst-sdk-node/lib/datastore/table.d.ts
+ * after every scoped read in this app (built against a `getRows({criteria, maxRows})` shape that
+ * doesn't exist) started throwing `c.table(...).getRows is not a function` on first live deploy.
+ * Rather than rewrite the ~90 call sites across the app, `getRows()` is reimplemented here as a
+ * thin shim over `zcql().executeZCQLQuery()`, which does exist and does support a WHERE clause —
+ * verified live against the deployed project's ZCQL Console (see chat) that `select
+ * TableName.* from TableName [where ...] [limit N]` returns `[{ TableName: { ROWID, ...columns } }]`,
+ * exactly the shape unwrapped below. Every existing `criteria` string in this codebase was already
+ * written in this same `Table.column op value` ZCQL syntax (they were modelled on the raw
+ * `executeZCQLQuery()` calls already used for joins elsewhere, e.g. src/server/cron/process-reminders.ts),
+ * so no call site needs to change.
+ */
+function wrapCatalystApp(rawApp: RawCatalystApp): CatalystApp {
+  return {
+    userManagement: () => rawApp.userManagement(),
+    datastore: () => ({
+      table: (name: string) => {
+        const rawTable = rawApp.datastore().table(name);
+        return {
+          getRows: async ({ criteria, maxRows }: { criteria?: string; maxRows?: number } = {}) => {
+            let sql = `select ${name}.* from ${name}`;
+            if (criteria) sql += ` where ${criteria}`;
+            if (maxRows) sql += ` limit ${maxRows}`;
+            const rows = await rawApp.zcql().executeZCQLQuery(sql);
+            return rows.map((row) => row[name] as CatalystRow);
+          },
+          insertRow: (row) => rawTable.insertRow(row),
+          updateRow: (row) => rawTable.updateRow(row),
+        };
+      },
+    }),
+    zcql: () => rawApp.zcql(),
+  };
+}
+
 /**
  * Request-scoped Catalyst app — resolves the caller's own Catalyst Authentication session from
  * the incoming request's cookies. This only works because `catalyst_auth: true` in app-config.json
@@ -63,7 +114,10 @@ function headersToPlainObject(headersList: Headers): Record<string, string> {
 export function catalystAppFromHeaders(headersList: Headers): CatalystApp {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const catalyst = require("zcatalyst-sdk-node");
-  return catalyst.initialize({ headers: headersToPlainObject(headersList) }) as CatalystApp;
+  const rawApp = catalyst.initialize({
+    headers: headersToPlainObject(headersList),
+  }) as RawCatalystApp;
+  return wrapCatalystApp(rawApp);
 }
 
 /**
@@ -80,7 +134,7 @@ export function catalystAppFromHeaders(headersList: Headers): CatalystApp {
 export function catalystAdminApp(): CatalystApp {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const catalyst = require("zcatalyst-sdk-node");
-  return catalyst.initialize(
+  const rawApp = catalyst.initialize(
     {
       PROJECT_ID: required("CATALYST_PROJECT_ID", process.env.CATALYST_PROJECT_ID),
       PROJECT_KEY: required("CATALYST_PROJECT_KEY", process.env.CATALYST_PROJECT_KEY),
@@ -90,5 +144,6 @@ export function catalystAdminApp(): CatalystApp {
       ),
     },
     { scope: "admin" },
-  ) as CatalystApp;
+  ) as RawCatalystApp;
+  return wrapCatalystApp(rawApp);
 }
