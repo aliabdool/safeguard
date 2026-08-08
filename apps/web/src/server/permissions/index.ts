@@ -56,17 +56,15 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
   const datastore = catalystApp.datastore();
   const zcql = catalystApp.zcql();
 
-  // TEMPORARY: this whole function is a prime suspect for a live "dashboard won't load after
-  // login" bug (see chat) — either the join value (user_id vs a separate top-level zuid the SDK
-  // also exposes — see CatalystUser's doc comment in lib/catalyst/app.ts) or the ZCQL operators
-  // (== / && are untested assumptions, never exercised against a live project before now) could be
-  // wrong. Logging the raw join value here and wrapping in try/catch so the real error — not
-  // Next.js's redacted digest — is visible in AppSail logs. Remove once confirmed working.
-  console.error("AUTH_DEBUG_zohoUser:", JSON.stringify(zohoUser));
+  // TEMPORARY: try/catch so the real error — not Next.js's redacted digest — is visible in
+  // AppSail logs, kept for one more deploy to confirm the zuid fix below actually works end to
+  // end. Remove once confirmed. (The join bug itself is fixed: zohoUser.zuid, not
+  // zohoUser.user_id — these are genuinely different values, confirmed live — see
+  // CatalystUser's doc comment in lib/catalyst/app.ts.)
   try {
     const userRows = await datastore
       .table("Users")
-      .getRows({ criteria: `Users.zuid = '${zohoUser.user_id}'`, maxRows: 1 });
+      .getRows({ criteria: `Users.zuid = '${zohoUser.zuid}'`, maxRows: 1 });
     const userRow = userRows[0] as UserRow | undefined;
     if (!userRow) {
       return null;

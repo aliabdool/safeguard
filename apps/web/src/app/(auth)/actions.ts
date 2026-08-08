@@ -81,7 +81,10 @@ export async function signUpAction(
     return { error: "Could not create account. This email may already be registered." };
   }
 
-  const zuid = registered.user_details.user_id;
+  // registered.user_details.zuid, NOT .user_id — confirmed live these are genuinely different
+  // values (see CatalystUser's doc comment in lib/catalyst/app.ts); using user_id here would
+  // store the wrong join value and make this user unable to log in later.
+  const zuid = registered.user_details.zuid;
 
   // Catalyst's own Authentication record exists now, but nothing auto-creates the matching Users
   // Data Store row the way Supabase's on_auth_user_created trigger did — insert it explicitly,
@@ -126,7 +129,7 @@ export async function signOutAction() {
     const userRows = await catalystApp
       .datastore()
       .table("Users")
-      .getRows({ criteria: `Users.zuid = '${zohoUser.user_id}'`, maxRows: 1 });
+      .getRows({ criteria: `Users.zuid = '${zohoUser.zuid}'`, maxRows: 1 });
     const userId = userRows[0]?.ROWID;
     if (userId) {
       await writeAuditLog({

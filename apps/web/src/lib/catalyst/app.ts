@@ -8,9 +8,14 @@ function required(name: string, value: string | undefined): string {
 }
 
 export interface CatalystUser {
-  /** The join key against our own Users.zuid column — matches the field name already used this
-   * way in apps/catalyst/functions/shared/middleware/auth-context.ts, despite the SDK's own
-   * `ICatalystUser` also exposing a separate top-level `zuid` field for the Zoho account itself. */
+  /** The real join key against our own Users.zuid column — confirmed live against the deployed
+   * project (see chat): a real logged-in session's `zuid` ("10130281250") and `user_id`
+   * ("18206000000042019") are genuinely different values, and Users.zuid stores the former. The
+   * previous code used `user_id` here — mirroring a comment in
+   * apps/catalyst/functions/shared/middleware/auth-context.ts that turned out to describe an
+   * equally unverified assumption, not a confirmed fact — which silently matched zero rows (no
+   * error, just an empty result) and sent every successful login straight back to /login. */
+  zuid: string;
   user_id: string;
   email_id: string;
   first_name: string;
