@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { mapWithConcurrency } from "@/lib/concurrency";
+import { logDebugError } from "@/lib/debug-log";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi } from "@/server/kpi/calculate";
 import { financialYearFor, recentFinancialYears } from "@/server/kpi/period";
@@ -181,7 +182,7 @@ export default async function DashboardPage({
       periodEnd: selectedPeriod.end,
     });
   } catch (err) {
-    console.error("DASHBOARD_DEBUG_REAL_ERROR:", err instanceof Error ? err.stack : err);
+    logDebugError("DASHBOARD_DEBUG_REAL_ERROR:", err);
     throw err;
   }
 

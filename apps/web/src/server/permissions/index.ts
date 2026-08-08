@@ -3,6 +3,7 @@ import "server-only";
 import { headers } from "next/headers";
 
 import { catalystAppFromHeaders, type CatalystApp } from "@/lib/catalyst/app";
+import { logDebugError } from "@/lib/debug-log";
 
 import {
   AuthError,
@@ -103,20 +104,12 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
     // and UserRoles"). This works regardless of the column's declared type, since the stored
     // value is still a valid Roles.ROWID string either way.
     const roleIds = (userRoleRows as unknown as Array<{ role_id: string }>).map((r) => r.role_id);
-    // TEMPORARY: the exact same queries succeed when run manually in the ZCQL Console but return
-    // empty here — logging the actual runtime values to find the real discrepancy rather than
-    // guess further. Remove once confirmed working.
-    console.error(
-      "AUTH_DEBUG_ROLES:",
-      JSON.stringify({ userRowROWID: userRow.ROWID, userRoleRows, roleIds }),
-    );
     const roleRows =
       roleIds.length > 0
         ? await datastore
             .table("Roles")
             .getRows({ criteria: `Roles.ROWID in (${roleIds.map((id) => `'${id}'`).join(",")})` })
         : [];
-    console.error("AUTH_DEBUG_ROLEROWS:", JSON.stringify(roleRows));
 
     const departmentAccess = new Map<string, Set<string>>();
     for (const row of departmentRows as unknown as Array<{
@@ -140,7 +133,7 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
       hasMedicalPermission: (medicalRows as unknown[]).length > 0,
     };
   } catch (err) {
-    console.error("AUTH_DEBUG_REAL_ERROR:", err instanceof Error ? err.stack : err);
+    logDebugError("AUTH_DEBUG_REAL_ERROR:", err);
     throw err;
   }
 }
