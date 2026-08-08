@@ -51,12 +51,14 @@ function headersToPlainObject(headersList: Headers): Record<string, string> {
 
 /**
  * Request-scoped Catalyst app — resolves the caller's own Catalyst Authentication session from
- * the incoming request's cookies. This only works because apps/web is deployed same-origin on
- * Catalyst AppSail (see docs/2026-07-catalyst-migration-plan.md); the SDK reads the `Cookie`
- * header and, for state-changing calls, an `X-ZCSRF-TOKEN` header the browser must attach itself.
- * Mirrors `catalystAppFromRequest()` in apps/catalyst/functions/shared/middleware/auth-context.ts,
- * adapted for Next.js's Web-standard `Headers` (which isn't a plain object the SDK can
- * `Object.assign` from directly).
+ * the incoming request's cookies. This only works because `catalyst_auth: true` in app-config.json
+ * makes AppSail serve /__catalyst/auth/* on the app's own origin and attach the session there —
+ * confirmed live against the deployed project (see chat) after an app-config.json-less deployment
+ * left the login flow unable to land back on this app at all. The SDK reads the `Cookie` header
+ * and, for state-changing calls, an `X-ZCSRF-TOKEN` header the browser must attach itself. Mirrors
+ * `catalystAppFromRequest()` in apps/catalyst/functions/shared/middleware/auth-context.ts, adapted
+ * for Next.js's Web-standard `Headers` (which isn't a plain object the SDK can `Object.assign`
+ * from directly).
  */
 export function catalystAppFromHeaders(headersList: Headers): CatalystApp {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -1,0 +1,4 @@
+{
+  "catalyst_auth": true,
+  "login_redirect": "/dashboard"
+}
