@@ -86,63 +86,82 @@ export default async function DashboardPage({
   const datastore = catalystApp.datastore();
   const zcql = catalystApp.zcql();
 
-  const allProperties = (await datastore
-    .table("Properties")
-    .getRows({ maxRows: 200 })) as PropertyRow[];
-  const availableProperties = allProperties.filter((p) => hasPropertyAccess(ctx, p.ROWID));
-  const selectedPropertyId =
-    propertyId && availableProperties.some((p) => p.ROWID === propertyId) ? propertyId : null;
+  let allProperties: PropertyRow[];
+  let availableProperties: PropertyRow[];
+  let fyOptions: ReturnType<typeof recentFinancialYears>;
+  let selectedFy: ReturnType<typeof recentFinancialYears>[number];
+  let selectedPeriod: ReturnType<typeof financialYearFor>["period"];
+  let tiles: Awaited<ReturnType<typeof calculateKpi>>[];
+  let byType: Array<{ label: string; count: number }>;
+  let byDept: Array<{ label: string; count: number }>;
+  let dataQuality: Awaited<ReturnType<typeof computeDataQuality>>;
+  let selectedPropertyId: string | null;
 
-  const fyOptions = recentFinancialYears(new Date());
-  const selectedFy = fyOptions.find((o) => o.label === fy) ?? fyOptions[0]!;
-  const { period: selectedPeriod } = financialYearFor(selectedFy.asOfAnchor);
+  // TEMPORARY: explicit console.error so the real error is visible in AppSail logs — Next.js
+  // redacts Server Component error messages by default in production, even from the documented
+  // instrumentation.ts onRequestError hook (per its own docs: "error instance might not be the
+  // original error instance ... if encountered during Server Components rendering"). Remove once
+  // the dashboard is confirmed working end-to-end (see chat).
+  try {
+    allProperties = (await datastore.table("Properties").getRows({ maxRows: 200 })) as PropertyRow[];
+    availableProperties = allProperties.filter((p) => hasPropertyAccess(ctx, p.ROWID));
+    selectedPropertyId =
+      propertyId && availableProperties.some((p) => p.ROWID === propertyId) ? propertyId : null;
 
-  const tiles = await Promise.all(
-    HEADLINE_KPI_CODES.map((code) =>
-      calculateKpi(catalystApp, ctx, code, {
-        propertyId: selectedPropertyId,
-        asOf: selectedFy.asOfAnchor,
-      }),
-    ),
-  );
+    fyOptions = recentFinancialYears(new Date());
+    selectedFy = fyOptions.find((o) => o.label === fy) ?? fyOptions[0]!;
+    selectedPeriod = financialYearFor(selectedFy.asOfAnchor).period;
 
-  const incidentScope = selectedPropertyId
-    ? `Incidents.property_id == '${selectedPropertyId}'`
-    : propertyScopeClause("Incidents.property_id", ctx);
-  const periodClause = `Incidents.occurred_at between '${selectedPeriod.start.toISOString()}' and '${selectedPeriod.end.toISOString()}'`;
+    tiles = await Promise.all(
+      HEADLINE_KPI_CODES.map((code) =>
+        calculateKpi(catalystApp, ctx, code, {
+          propertyId: selectedPropertyId,
+          asOf: selectedFy.asOfAnchor,
+        }),
+      ),
+    );
 
-  const [byTypeRows, byDeptRows] = (await Promise.all([
-    zcql.executeZCQLQuery(
-      `select Incidents.incident_type, count(Incidents.ROWID) as n from Incidents
-       where ${incidentScope} && ${periodClause}
-       group by Incidents.incident_type`,
-    ),
-    zcql.executeZCQLQuery(
-      `select Departments.name, count(Incidents.ROWID) as n from Incidents
-       left join Departments on Incidents.department_id = Departments.ROWID
-       where ${incidentScope} && ${periodClause}
-       group by Departments.name`,
-    ),
-  ])) as [
-    Array<{ Incidents: { incident_type: string; n: string } }>,
-    Array<{ Departments: { name: string }; Incidents: { n: string } }>,
-  ];
+    const incidentScope = selectedPropertyId
+      ? `Incidents.property_id == '${selectedPropertyId}'`
+      : propertyScopeClause("Incidents.property_id", ctx);
+    const periodClause = `Incidents.occurred_at between '${selectedPeriod.start.toISOString()}' and '${selectedPeriod.end.toISOString()}'`;
 
-  const byType = byTypeRows
-    .map((r) => ({ label: r.Incidents.incident_type, count: Number(r.Incidents.n) }))
-    .sort((a, b) => b.count - a.count);
-  const byDept = byDeptRows
-    .map((r) => ({ label: r.Departments.name, count: Number(r.Incidents.n) }))
-    .sort((a, b) => b.count - a.count);
+    const [byTypeRows, byDeptRows] = (await Promise.all([
+      zcql.executeZCQLQuery(
+        `select Incidents.incident_type, count(Incidents.ROWID) as n from Incidents
+         where ${incidentScope} && ${periodClause}
+         group by Incidents.incident_type`,
+      ),
+      zcql.executeZCQLQuery(
+        `select Departments.name, count(Incidents.ROWID) as n from Incidents
+         left join Departments on Incidents.department_id = Departments.ROWID
+         where ${incidentScope} && ${periodClause}
+         group by Departments.name`,
+      ),
+    ])) as [
+      Array<{ Incidents: { incident_type: string; n: string } }>,
+      Array<{ Departments: { name: string }; Incidents: { n: string } }>,
+    ];
 
-  // Data-quality panel — real checks against this FY/property's own records, not fabricated.
-  const dataQuality = await computeDataQuality({
-    catalystApp,
-    ctx,
-    propertyId: selectedPropertyId,
-    periodStart: selectedPeriod.start,
-    periodEnd: selectedPeriod.end,
-  });
+    byType = byTypeRows
+      .map((r) => ({ label: r.Incidents.incident_type, count: Number(r.Incidents.n) }))
+      .sort((a, b) => b.count - a.count);
+    byDept = byDeptRows
+      .map((r) => ({ label: r.Departments.name, count: Number(r.Incidents.n) }))
+      .sort((a, b) => b.count - a.count);
+
+    // Data-quality panel — real checks against this FY/property's own records, not fabricated.
+    dataQuality = await computeDataQuality({
+      catalystApp,
+      ctx,
+      propertyId: selectedPropertyId,
+      periodStart: selectedPeriod.start,
+      periodEnd: selectedPeriod.end,
+    });
+  } catch (err) {
+    console.error("DASHBOARD_DEBUG_REAL_ERROR:", err instanceof Error ? err.stack : err);
+    throw err;
+  }
 
   return (
     <div className="flex flex-col gap-6">
