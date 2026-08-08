@@ -82,10 +82,10 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
       };
     }
 
-    const [roleRows, propertyRows, departmentRows, medicalRows] = await Promise.all([
-      zcql.executeZCQLQuery(
-        `select Roles.code from UserRoles left join Roles on UserRoles.role_id = Roles.ROWID where UserRoles.user_id = '${userRow.ROWID}'`,
-      ),
+    const [userRoleRows, propertyRows, departmentRows, medicalRows] = await Promise.all([
+      datastore
+        .table("UserRoles")
+        .getRows({ criteria: `UserRoles.user_id = '${userRow.ROWID}'` }),
       datastore
         .table("UserPropertyAccess")
         .getRows({ criteria: `UserPropertyAccess.user_id = '${userRow.ROWID}'` }),
@@ -96,6 +96,19 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
         `select UserPermissions.permission_code from UserPermissions where UserPermissions.user_id = '${userRow.ROWID}' and UserPermissions.permission_code in ('${MEDICAL_PERMISSION_CODES.join("', '")}') and UserPermissions.revoked_at is null`,
       ),
     ]);
+
+    // Two-step lookup instead of a ZCQL left join — confirmed live against the deployed project
+    // that UserRoles.role_id is a plain Text column, not a real Lookup/Foreign Key, and ZCQL's
+    // left join requires an actual declared relationship ("No relationship between tables Roles
+    // and UserRoles"). This works regardless of the column's declared type, since the stored
+    // value is still a valid Roles.ROWID string either way.
+    const roleIds = (userRoleRows as unknown as Array<{ role_id: string }>).map((r) => r.role_id);
+    const roleRows =
+      roleIds.length > 0
+        ? await datastore
+            .table("Roles")
+            .getRows({ criteria: `Roles.ROWID in (${roleIds.map((id) => `'${id}'`).join(",")})` })
+        : [];
 
     const departmentAccess = new Map<string, Set<string>>();
     for (const row of departmentRows as unknown as Array<{
@@ -111,7 +124,7 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
       userId: userRow.ROWID,
       fullName: userRow.full_name ?? "Unknown user",
       status: "active",
-      roleCodes: (roleRows as Array<{ Roles: { code: RoleCode } }>).map((r) => r.Roles.code),
+      roleCodes: (roleRows as unknown as Array<{ code: RoleCode }>).map((r) => r.code),
       propertyIds: (propertyRows as unknown as Array<{ property_id: string }>).map(
         (r) => r.property_id,
       ),
