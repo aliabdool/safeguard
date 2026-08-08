@@ -11,10 +11,6 @@ interface CapaRow {
   final_approved_at: string | null;
 }
 
-interface VerificationJoinRow {
-  CAPAVerification: { ROWID: string; outcome: string };
-}
-
 function capaScopeClause(params: KpiCalculationParams, table = "CAPA"): string {
   const propClause = params.propertyId
     ? `${table}.property_id = '${params.propertyId}'`
@@ -65,22 +61,32 @@ export async function capaClosedOnTimeRate(
 export async function capaEffectivenessRate(
   params: KpiCalculationParams,
 ): Promise<KpiCalculationResult> {
-  const zcql = params.catalystApp.zcql();
+  const datastore = params.catalystApp.datastore();
   const scope = capaScopeClause(params, "CAPA");
 
+  // CAPAVerification.capa_id is a plain Text column, not a real Lookup/FK to CAPA — same class of
+  // bug as the UserRoles/Roles join fixed in server/permissions/index.ts, so the CAPA scope is
+  // resolved to a ROWID list first and CAPAVerification is filtered by capa_id in application code
+  // rather than joined in ZCQL.
+  const scopedCapaRows = (await datastore.table("CAPA").getRows({
+    criteria: scope,
+  })) as unknown as Array<{ ROWID: string }>;
+  const capaIds = scopedCapaRows.map((c) => c.ROWID);
+
   async function rate(start: Date, end: Date) {
-    const verifications = (await zcql.executeZCQLQuery(
-      `select CAPAVerification.ROWID, CAPAVerification.outcome
-       from CAPAVerification left join CAPA on CAPAVerification.capa_id = CAPA.ROWID
-       where ${scope} && CAPAVerification.verified_at >= '${start.toISOString()}' and CAPAVerification.verified_at <= '${end.toISOString()}'`,
-    )) as VerificationJoinRow[];
+    if (capaIds.length === 0) {
+      return { value: null as number | null, ids: [] as string[] };
+    }
+    const verifications = (await datastore.table("CAPAVerification").getRows({
+      criteria: `CAPAVerification.capa_id in (${capaIds.map((id) => `'${id}'`).join(",")}) && CAPAVerification.verified_at >= '${start.toISOString()}' and CAPAVerification.verified_at <= '${end.toISOString()}'`,
+    })) as unknown as Array<{ ROWID: string; outcome: string }>;
     if (verifications.length === 0) {
       return { value: null as number | null, ids: [] as string[] };
     }
-    const effective = verifications.filter((v) => v.CAPAVerification.outcome === "effective");
+    const effective = verifications.filter((v) => v.outcome === "effective");
     return {
       value: (effective.length / verifications.length) * 100,
-      ids: verifications.map((v) => v.CAPAVerification.ROWID),
+      ids: verifications.map((v) => v.ROWID),
     };
   }
 

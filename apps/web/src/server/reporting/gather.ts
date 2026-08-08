@@ -131,22 +131,50 @@ export async function gatherAssurancePackInput(
   )) as Array<{ CriticalGaps: { n: string } }>;
   const criticalGapControlCount = Number(gapRows[0]?.CriticalGaps.n ?? 0);
 
-  const findingScope = propertyId ? `Audits.property_id = '${propertyId}' && ` : "";
-  const findingRows = (await zcql.executeZCQLQuery(
-    `select AuditFindings.ROWID, AuditFindings.classification, AuditFindings.description, Controls.control_code
-     from AuditFindings left join Audits on AuditFindings.audit_id = Audits.ROWID
-     left join Controls on AuditFindings.control_id = Controls.ROWID
-     where ${findingScope}AuditFindings.classification in ('critical_nc','major_nc') && AuditFindings.status != 'closed'`,
-  )) as Array<{
-    AuditFindings: { ROWID: string; classification: string; description: string };
-    Controls: { control_code: string } | null;
-  }>;
-  const openFindings: OpenFindingRow[] = findingRows.map((r) => ({
-    findingNumber: r.AuditFindings.ROWID,
-    classification: r.AuditFindings.classification,
-    controlCode: r.Controls?.control_code ?? null,
-    description: r.AuditFindings.description,
-  }));
+  // AuditFindings.audit_id / .control_id are plain Text columns, not real Lookup/FKs to Audits /
+  // Controls (same class of bug as the UserRoles/Roles join fixed in server/permissions/index.ts),
+  // so Audits/Controls are resolved via separate ROWID-list lookups and joined in application code
+  // rather than in ZCQL.
+  let findingAuditIds: string[] | null = null;
+  if (propertyId) {
+    const scopedAuditRows = (await catalystApp.datastore().table("Audits").getRows({
+      criteria: `Audits.property_id = '${propertyId}'`,
+    })) as unknown as Array<{ ROWID: string }>;
+    findingAuditIds = scopedAuditRows.map((a) => a.ROWID);
+  }
+
+  const openFindings: OpenFindingRow[] = [];
+  if (!findingAuditIds || findingAuditIds.length > 0) {
+    const auditIdClause = findingAuditIds
+      ? `AuditFindings.audit_id in (${findingAuditIds.map((id) => `'${id}'`).join(",")}) && `
+      : "";
+    const findingRows = (await catalystApp.datastore().table("AuditFindings").getRows({
+      criteria: `${auditIdClause}AuditFindings.classification in ('critical_nc','major_nc') && AuditFindings.status != 'closed'`,
+    })) as unknown as Array<{
+      ROWID: string;
+      classification: string;
+      description: string;
+      control_id: string | null;
+    }>;
+
+    const controlIds = [...new Set(findingRows.map((r) => r.control_id).filter((id): id is string => !!id))];
+    const controlRows =
+      controlIds.length > 0
+        ? ((await catalystApp.datastore().table("Controls").getRows({
+            criteria: `Controls.ROWID in (${controlIds.map((id) => `'${id}'`).join(",")})`,
+          })) as unknown as Array<{ ROWID: string; control_code: string }>)
+        : [];
+    const controlCodeById = new Map(controlRows.map((c) => [c.ROWID, c.control_code]));
+
+    openFindings.push(
+      ...findingRows.map((r) => ({
+        findingNumber: r.ROWID,
+        classification: r.classification,
+        controlCode: r.control_id ? (controlCodeById.get(r.control_id) ?? null) : null,
+        description: r.description,
+      })),
+    );
+  }
 
   const capaScope = propertyId ? ` where CAPA.property_id = '${propertyId}'` : "";
   const capaRows = (await zcql.executeZCQLQuery(

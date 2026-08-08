@@ -92,20 +92,25 @@ interface UserRow extends CatalystRow {
 export async function listUsers(catalystApp: CatalystApp): Promise<UserSummary[]> {
   const datastore = catalystApp.datastore();
 
-  const [userRows, roleAssignmentRows] = await Promise.all([
+  // UserRoles.role_id is a plain Text column, not a real Lookup/FK to Roles — confirmed live via
+  // the ZCQL Console ("No relationship between tables Roles and UserRoles" on a `left join`, same
+  // root cause fixed in server/permissions/index.ts). Roles are joined in application code instead.
+  const [userRows, userRoleRows, roleRows] = await Promise.all([
     datastore.table("Users").getRows({}) as Promise<UserRow[]>,
-    catalystApp
-      .zcql()
-      .executeZCQLQuery(
-        `select UserRoles.user_id, Roles.name from UserRoles left join Roles on UserRoles.role_id = Roles.ROWID`,
-      ) as Promise<Array<{ UserRoles: { user_id: string }; Roles: { name: string } }>>,
+    datastore.table("UserRoles").getRows({}) as Promise<
+      Array<CatalystRow & { user_id: string; role_id: string }>
+    >,
+    datastore.table("Roles").getRows({}) as Promise<RoleRow[]>,
   ]);
 
+  const roleNameById = new Map(roleRows.map((r) => [r.ROWID, r.name]));
   const rolesByUser = new Map<string, string[]>();
-  for (const row of roleAssignmentRows) {
-    const list = rolesByUser.get(row.UserRoles.user_id) ?? [];
-    list.push(row.Roles.name);
-    rolesByUser.set(row.UserRoles.user_id, list);
+  for (const row of userRoleRows) {
+    const roleName = roleNameById.get(row.role_id);
+    if (!roleName) continue;
+    const list = rolesByUser.get(row.user_id) ?? [];
+    list.push(roleName);
+    rolesByUser.set(row.user_id, list);
   }
 
   return userRows.map((row) => ({

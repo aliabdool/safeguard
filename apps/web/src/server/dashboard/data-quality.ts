@@ -53,11 +53,18 @@ export async function computeDataQuality(params: {
      where ${incidentScope} && ${periodClause} && Incidents.injury_mechanism_id is null && Incidents.outcome != 'no_injury'`,
   )) as Array<{ Incidents: { n: string } }>;
 
-  const pendingReportableRows = (await zcql.executeZCQLQuery(
-    `select count(Incidents.ROWID) as n from Incidents
-     left join IncidentOSHReportability on Incidents.ROWID = IncidentOSHReportability.incident_id
-     where ${incidentScope} && ${periodClause} && IncidentOSHReportability.reportable_status = 'pending_determination'`,
-  )) as Array<{ Incidents: { n: string } }>;
+  // IncidentOSHReportability.incident_id is a plain Text column, not a real Lookup/FK to
+  // Incidents (same class of bug as the UserRoles/Roles join fixed in
+  // server/permissions/index.ts), so in-scope incident ROWIDs are resolved first and
+  // IncidentOSHReportability is filtered by incident_id in application code rather than joined.
+  const pendingReportableIncidentIds = new Set(inScopeIncidents.map((i) => i.ROWID));
+  let pendingReportableCount = 0;
+  if (pendingReportableIncidentIds.size > 0) {
+    const pendingReportableRows = (await datastore.table("IncidentOSHReportability").getRows({
+      criteria: `IncidentOSHReportability.incident_id in (${[...pendingReportableIncidentIds].map((id) => `'${id}'`).join(",")}) && IncidentOSHReportability.reportable_status = 'pending_determination'`,
+    })) as unknown as Array<{ incident_id: string }>;
+    pendingReportableCount = pendingReportableRows.length;
+  }
 
   const capaScope = propertyId
     ? `CAPA.property_id = '${propertyId}'`
@@ -76,7 +83,7 @@ export async function computeDataQuality(params: {
     },
     {
       label: "OSH-reportable status not yet determined",
-      count: Number(pendingReportableRows[0]?.Incidents.n ?? 0),
+      count: pendingReportableCount,
     },
     { label: "Corrective actions overdue", count: Number(overdueCapaRows[0]?.CAPA.n ?? 0) },
   ];

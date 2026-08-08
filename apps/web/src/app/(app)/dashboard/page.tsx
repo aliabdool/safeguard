@@ -125,28 +125,51 @@ export default async function DashboardPage({
       : propertyScopeClause("Incidents.property_id", ctx);
     const periodClause = `Incidents.occurred_at >= '${selectedPeriod.start.toISOString()}' and Incidents.occurred_at <= '${selectedPeriod.end.toISOString()}'`;
 
-    const [byTypeRows, byDeptRows] = (await Promise.all([
+    // Incidents.department_id is a plain Text column, not a real Lookup/FK to Departments —
+    // confirmed live via the ZCQL Console ("No relationship between tables Departments and
+    // Incidents" on a `left join`, same root cause as the UserRoles/Roles bug fixed in
+    // server/permissions/index.ts). Department names are joined in application code instead.
+    const [byTypeRows, byDeptIdRows] = (await Promise.all([
       zcql.executeZCQLQuery(
         `select Incidents.incident_type, count(Incidents.ROWID) as n from Incidents
          where ${incidentScope} && ${periodClause}
          group by Incidents.incident_type`,
       ),
       zcql.executeZCQLQuery(
-        `select Departments.name, count(Incidents.ROWID) as n from Incidents
-         left join Departments on Incidents.department_id = Departments.ROWID
+        `select Incidents.department_id, count(Incidents.ROWID) as n from Incidents
          where ${incidentScope} && ${periodClause}
-         group by Departments.name`,
+         group by Incidents.department_id`,
       ),
     ])) as [
       Array<{ Incidents: { incident_type: string; n: string } }>,
-      Array<{ Departments: { name: string }; Incidents: { n: string } }>,
+      Array<{ Incidents: { department_id: string | null; n: string } }>,
     ];
 
     byType = byTypeRows
       .map((r) => ({ label: r.Incidents.incident_type, count: Number(r.Incidents.n) }))
       .sort((a, b) => b.count - a.count);
-    byDept = byDeptRows
-      .map((r) => ({ label: r.Departments.name, count: Number(r.Incidents.n) }))
+
+    const deptIds = [
+      ...new Set(
+        byDeptIdRows
+          .map((r) => r.Incidents.department_id)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const deptRows =
+      deptIds.length > 0
+        ? ((await datastore.table("Departments").getRows({
+            criteria: `Departments.ROWID in (${deptIds.map((id) => `'${id}'`).join(",")})`,
+          })) as Array<CatalystRow & { name: string }>)
+        : [];
+    const deptNameById = new Map(deptRows.map((d) => [d.ROWID, d.name]));
+    byDept = byDeptIdRows
+      .map((r) => ({
+        label: r.Incidents.department_id
+          ? (deptNameById.get(r.Incidents.department_id) ?? "Unknown department")
+          : "Unassigned",
+        count: Number(r.Incidents.n),
+      }))
       .sort((a, b) => b.count - a.count);
 
     // Data-quality panel — real checks against this FY/property's own records, not fabricated.

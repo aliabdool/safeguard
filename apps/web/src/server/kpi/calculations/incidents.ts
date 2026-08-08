@@ -80,21 +80,28 @@ export async function countIncidentsInPeriod(
 export async function countReportableOshCasesInPeriod(
   params: KpiCalculationParams,
 ): Promise<KpiCalculationResult> {
-  const zcql = params.catalystApp.zcql();
+  const datastore = params.catalystApp.datastore();
   const { propClause, deptClause } = incidentScopeClause(params);
 
+  // IncidentOSHReportability.incident_id is a plain Text column, not a real Lookup/FK to
+  // Incidents — confirmed live for the same class of column (see UserRoles/Roles fix in
+  // server/permissions/index.ts) — so incidents in-range/in-scope are resolved to a ROWID list
+  // first and IncidentOSHReportability is filtered by incident_id in application code rather than
+  // joined in ZCQL.
   async function countInRange(op: "between" | "half-open", start: string, end: string) {
     const rangeClause =
       op === "between"
         ? `Incidents.occurred_at >= '${start}' and Incidents.occurred_at <= '${end}'`
         : `Incidents.occurred_at >= '${start}' && Incidents.occurred_at < '${end}'`;
-    const rows = (await zcql.executeZCQLQuery(
-      `select Incidents.ROWID from Incidents
-       left join IncidentOSHReportability on Incidents.ROWID = IncidentOSHReportability.incident_id
-       where ${propClause}${deptClause} && IncidentOSHReportability.reportable_status = 'yes'
-         && ${rangeClause}`,
-    )) as Array<{ Incidents: { ROWID: string } }>;
-    return rows.map((r) => r.Incidents.ROWID);
+    const incidentRows = (await datastore.table("Incidents").getRows({
+      criteria: `${propClause}${deptClause} && ${rangeClause}`,
+    })) as unknown as Array<{ ROWID: string }>;
+    const incidentIds = incidentRows.map((r) => r.ROWID);
+    if (incidentIds.length === 0) return [];
+    const reportableRows = (await datastore.table("IncidentOSHReportability").getRows({
+      criteria: `IncidentOSHReportability.incident_id in (${incidentIds.map((id) => `'${id}'`).join(",")}) && IncidentOSHReportability.reportable_status = 'yes'`,
+    })) as unknown as Array<{ incident_id: string }>;
+    return reportableRows.map((r) => r.incident_id);
   }
 
   const currentIds = await countInRange(
