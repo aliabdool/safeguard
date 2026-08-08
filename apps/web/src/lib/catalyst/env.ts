@@ -19,9 +19,21 @@ export function getCatalystProjectDomain(): string {
  * Zoho Catalyst's native Hosted/Embedded Login page — branded via the Console's Authentication
  * Setup wizard (company name/logo/colors), configured with Public Signup off. Handles sign-in and
  * "Forgot password?" natively; apps/web never sees a raw password.
+ *
+ * `redirect_url` tells Catalyst where to send the browser after a successful sign-in — without it,
+ * Catalyst falls back to its own default Web Client Hosting landing spot (`/app/`), which has
+ * nothing deployed there since apps/web runs on AppSail under a separate domain. Confirmed live
+ * against the deployed project (see chat) after the console's Authentication Setup screens turned
+ * out to have no static redirect-URL field to configure this any other way.
  */
-export function getCatalystHostedLoginUrl(): string {
-  return `https://${getCatalystProjectDomain()}/__catalyst/auth/login`;
+export function getCatalystHostedLoginUrl(returnTo = "/dashboard"): string {
+  const target = `${getAppOrigin()}${returnTo}`;
+  return `https://${getCatalystProjectDomain()}/__catalyst/auth/login?redirect_url=${encodeURIComponent(target)}`;
+}
+
+/** apps/web's own deployed origin — see NEXT_PUBLIC_SITE_URL, set to the real AppSail URL post-deploy. */
+function getAppOrigin(): string {
+  return required("NEXT_PUBLIC_SITE_URL", process.env.NEXT_PUBLIC_SITE_URL);
 }
 
 /**
