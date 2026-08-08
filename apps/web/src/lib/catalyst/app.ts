@@ -82,6 +82,26 @@ interface RawTable {
  * `executeZCQLQuery()` calls already used for joins elsewhere, e.g. src/server/cron/process-reminders.ts),
  * so no call site needs to change.
  */
+/**
+ * Runs a ZCQL query and, on failure, re-throws with the actual query text prefixed onto the error
+ * message. Zoho's own error ("ZCQL QUERY ERROR — Syntax error in given query") never includes the
+ * offending SQL, which turned every ZCQL bug in this app into a multi-round debugging cycle
+ * (redeploy, reproduce, dig through AppSail logs, guess). Applied everywhere a query is run — both
+ * inside the getRows() shim below and for direct executeZCQLQuery() callers — so any future error
+ * is diagnosable from the first log line.
+ */
+async function runZcql(
+  rawApp: RawCatalystApp,
+  sql: string,
+): Promise<Array<Record<string, Record<string, unknown>>>> {
+  try {
+    return await rawApp.zcql().executeZCQLQuery(sql);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`ZCQL query failed: ${message}\nQuery: ${sql}`);
+  }
+}
+
 function wrapCatalystApp(rawApp: RawCatalystApp): CatalystApp {
   return {
     userManagement: () => rawApp.userManagement(),
@@ -93,7 +113,7 @@ function wrapCatalystApp(rawApp: RawCatalystApp): CatalystApp {
             let sql = `select ${name}.* from ${name}`;
             if (criteria) sql += ` where ${criteria}`;
             if (maxRows) sql += ` limit ${maxRows}`;
-            const rows = await rawApp.zcql().executeZCQLQuery(sql);
+            const rows = await runZcql(rawApp, sql);
             return rows.map((row) => row[name] as CatalystRow);
           },
           insertRow: (row) => rawTable.insertRow(row),
@@ -101,7 +121,7 @@ function wrapCatalystApp(rawApp: RawCatalystApp): CatalystApp {
         };
       },
     }),
-    zcql: () => rawApp.zcql(),
+    zcql: () => ({ executeZCQLQuery: (sql: string) => runZcql(rawApp, sql) }),
   };
 }
 
