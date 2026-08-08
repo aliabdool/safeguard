@@ -43,7 +43,7 @@ export default async function ControlDetailPage({
   const datastore = catalystApp.datastore();
 
   const controlRows = (await datastore.table("Controls").getRows({
-    criteria: `Controls.ROWID == '${controlId}'`,
+    criteria: `Controls.ROWID = '${controlId}'`,
     maxRows: 1,
   })) as ControlRow[];
   const control = controlRows[0];
@@ -60,11 +60,11 @@ export default async function ControlDetailPage({
         `where ControlFrameworkMappings.control_id = '${controlId}'`,
     ) as Promise<MappingQueryRow[]>,
     datastore.table("LegalRequirementDetails").getRows({
-      criteria: `LegalRequirementDetails.control_id == '${controlId}'`,
+      criteria: `LegalRequirementDetails.control_id = '${controlId}'`,
       maxRows: 1,
     }) as Promise<LegalRow[]>,
     datastore.table("ControlAssessments").getRows({
-      criteria: `ControlAssessments.control_id == '${controlId}'`,
+      criteria: `ControlAssessments.control_id = '${controlId}'`,
     }) as Promise<AssessmentRow[]>,
     listProperties(catalystApp),
     listDepartments(catalystApp),

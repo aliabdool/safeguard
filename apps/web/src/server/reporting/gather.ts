@@ -53,7 +53,7 @@ async function scopeMeta(catalystApp: CatalystApp, propertyId: string | null, as
   let propertyLabel = "All accessible properties";
   if (propertyId) {
     const rows = (await catalystApp.datastore().table("Properties").getRows({
-      criteria: `Properties.ROWID == '${propertyId}'`,
+      criteria: `Properties.ROWID = '${propertyId}'`,
       maxRows: 1,
     })) as Array<CatalystRow & { name: string }>;
     propertyLabel = rows[0]?.name ?? propertyLabel;
@@ -126,13 +126,13 @@ export async function gatherAssurancePackInput(
   // queries are unscoped (no WHERE predicate) rather than restricted to the caller's accessible
   // property set — same as the Drizzle version's `gapScopePredicate = propertyId ? eq(...) :
   // undefined`. Not a new gap introduced by this migration, just preserved as-is.
-  const gapScope = propertyId ? `CriticalGaps.property_id == '${propertyId}' && ` : "";
+  const gapScope = propertyId ? `CriticalGaps.property_id = '${propertyId}' && ` : "";
   const gapRows = (await zcql.executeZCQLQuery(
     `select count(distinct CriticalGaps.control_id) as n from CriticalGaps where ${gapScope}CriticalGaps.resolved_at is null`,
   )) as Array<{ CriticalGaps: { n: string } }>;
   const criticalGapControlCount = Number(gapRows[0]?.CriticalGaps.n ?? 0);
 
-  const findingScope = propertyId ? `Audits.property_id == '${propertyId}' && ` : "";
+  const findingScope = propertyId ? `Audits.property_id = '${propertyId}' && ` : "";
   const findingRows = (await zcql.executeZCQLQuery(
     `select AuditFindings.ROWID, AuditFindings.classification, AuditFindings.description, Controls.control_code
      from AuditFindings left join Audits on AuditFindings.audit_id = Audits.ROWID
@@ -149,7 +149,7 @@ export async function gatherAssurancePackInput(
     description: r.AuditFindings.description,
   }));
 
-  const capaScope = propertyId ? ` where CAPA.property_id == '${propertyId}'` : "";
+  const capaScope = propertyId ? ` where CAPA.property_id = '${propertyId}'` : "";
   const capaRows = (await zcql.executeZCQLQuery(
     `select CAPA.status, count(CAPA.ROWID) as n from CAPA${capaScope} group by CAPA.status`,
   )) as Array<{ CAPA: { status: string; n: string } }>;

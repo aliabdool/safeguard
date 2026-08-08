@@ -17,9 +17,9 @@ interface VerificationJoinRow {
 
 function capaScopeClause(params: KpiCalculationParams, table = "CAPA"): string {
   const propClause = params.propertyId
-    ? `${table}.property_id == '${params.propertyId}'`
+    ? `${table}.property_id = '${params.propertyId}'`
     : propertyScopeClause(`${table}.property_id`, params.ctx);
-  const deptClause = params.departmentId ? ` && ${table}.department_id == '${params.departmentId}'` : "";
+  const deptClause = params.departmentId ? ` && ${table}.department_id = '${params.departmentId}'` : "";
   return `${propClause}${deptClause}`;
 }
 
@@ -32,7 +32,7 @@ export async function capaClosedOnTimeRate(
 
   async function rate(start: Date, end: Date) {
     const closed = (await datastore.table("CAPA").getRows({
-      criteria: `${scope} && CAPA.status == 'closed' && CAPA.final_approved_at between '${start.toISOString()}' and '${end.toISOString()}'`,
+      criteria: `${scope} && CAPA.status = 'closed' && CAPA.final_approved_at >= '${start.toISOString()}' and CAPA.final_approved_at <= '${end.toISOString()}'`,
     })) as unknown as CapaRow[];
     if (closed.length === 0) {
       return { value: null as number | null, ids: [] as string[] };
@@ -72,7 +72,7 @@ export async function capaEffectivenessRate(
     const verifications = (await zcql.executeZCQLQuery(
       `select CAPAVerification.ROWID, CAPAVerification.outcome
        from CAPAVerification left join CAPA on CAPAVerification.capa_id = CAPA.ROWID
-       where ${scope} && CAPAVerification.verified_at between '${start.toISOString()}' and '${end.toISOString()}'`,
+       where ${scope} && CAPAVerification.verified_at >= '${start.toISOString()}' and CAPAVerification.verified_at <= '${end.toISOString()}'`,
     )) as VerificationJoinRow[];
     if (verifications.length === 0) {
       return { value: null as number | null, ids: [] as string[] };

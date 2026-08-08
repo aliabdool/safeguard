@@ -17,7 +17,7 @@ export async function nextCapaActionNumber(catalystApp: CatalystApp): Promise<st
   const rows = (await catalystApp
     .zcql()
     .executeZCQLQuery(
-      `select count(CAPA.ROWID) as n from CAPA where CAPA.created_at between '${yearStart}' and '${yearEnd}'`,
+      `select count(CAPA.ROWID) as n from CAPA where CAPA.created_at >= '${yearStart}' and CAPA.created_at <= '${yearEnd}'`,
     )) as Array<{ CAPA: { n: string } }>;
 
   const seq = Number(rows[0]?.CAPA.n ?? "0") + 1;

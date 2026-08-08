@@ -36,7 +36,7 @@ export default async function ChecklistPage({
   const datastore = catalystApp.datastore();
 
   const auditRows = (await datastore.table("Audits").getRows({
-    criteria: `Audits.ROWID == '${auditId}'`,
+    criteria: `Audits.ROWID = '${auditId}'`,
     maxRows: 1,
   })) as AuditRow[];
   const audit = auditRows[0];
@@ -46,7 +46,7 @@ export default async function ChecklistPage({
 
   const [items, allControls] = await Promise.all([
     datastore.table("AuditChecklistItems").getRows({
-      criteria: `AuditChecklistItems.audit_id == '${auditId}'`,
+      criteria: `AuditChecklistItems.audit_id = '${auditId}'`,
     }) as Promise<ChecklistItemRow[]>,
     datastore.table("Controls").getRows({}) as Promise<
       Array<CatalystRow & { control_code: string }>

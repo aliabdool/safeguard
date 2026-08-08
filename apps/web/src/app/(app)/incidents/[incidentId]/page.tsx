@@ -60,7 +60,7 @@ export default async function IncidentDetailPage({
   const datastore = catalystApp.datastore();
 
   const incidentRows = (await datastore.table("Incidents").getRows({
-    criteria: `Incidents.ROWID == '${incidentId}'`,
+    criteria: `Incidents.ROWID = '${incidentId}'`,
     maxRows: 1,
   })) as IncidentRow[];
   const incident = incidentRows[0];
@@ -71,18 +71,18 @@ export default async function IncidentDetailPage({
   const [propertyRows, departmentRows, attachments, notifications] = await Promise.all([
     datastore
       .table("Properties")
-      .getRows({ criteria: `Properties.ROWID == '${incident.property_id}'`, maxRows: 1 }),
+      .getRows({ criteria: `Properties.ROWID = '${incident.property_id}'`, maxRows: 1 }),
     datastore
       .table("Departments")
-      .getRows({ criteria: `Departments.ROWID == '${incident.department_id}'`, maxRows: 1 }),
+      .getRows({ criteria: `Departments.ROWID = '${incident.department_id}'`, maxRows: 1 }),
     datastore
       .table("IncidentAttachments")
-      .getRows({ criteria: `IncidentAttachments.incident_id == '${incidentId}'` }) as Promise<
+      .getRows({ criteria: `IncidentAttachments.incident_id = '${incidentId}'` }) as Promise<
       AttachmentRow[]
     >,
     datastore
       .table("IncidentNotifications")
-      .getRows({ criteria: `IncidentNotifications.incident_id == '${incidentId}'` }) as Promise<
+      .getRows({ criteria: `IncidentNotifications.incident_id = '${incidentId}'` }) as Promise<
       NotificationRow[]
     >,
   ]);

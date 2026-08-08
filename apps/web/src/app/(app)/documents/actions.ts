@@ -170,7 +170,7 @@ export async function approveDocumentVersionAction(
   const datastore = catalystApp.datastore();
 
   const versionRows = (await datastore.table("DocumentVersions").getRows({
-    criteria: `DocumentVersions.ROWID == '${parsed.data.versionId}'`,
+    criteria: `DocumentVersions.ROWID = '${parsed.data.versionId}'`,
     maxRows: 1,
   })) as DocumentVersionRow[];
   const version = versionRows[0];

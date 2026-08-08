@@ -39,7 +39,7 @@ export default async function FindingDetailPage({
   const datastore = catalystApp.datastore();
 
   const findingRows = (await datastore.table("AuditFindings").getRows({
-    criteria: `AuditFindings.ROWID == '${findingId}'`,
+    criteria: `AuditFindings.ROWID = '${findingId}'`,
     maxRows: 1,
   })) as FindingRow[];
   const finding = findingRows[0];
@@ -48,7 +48,7 @@ export default async function FindingDetailPage({
   }
 
   const auditRows = (await datastore.table("Audits").getRows({
-    criteria: `Audits.ROWID == '${finding.audit_id}'`,
+    criteria: `Audits.ROWID = '${finding.audit_id}'`,
     maxRows: 1,
   })) as AuditRow[];
   const audit = auditRows[0];
@@ -57,7 +57,7 @@ export default async function FindingDetailPage({
   }
 
   const linkedCapas = (await datastore.table("CAPA").getRows({
-    criteria: `CAPA.source_type == 'audit_finding' && CAPA.source_id == '${findingId}'`,
+    criteria: `CAPA.source_type = 'audit_finding' && CAPA.source_id = '${findingId}'`,
   })) as CapaRow[];
 
   return (

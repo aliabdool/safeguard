@@ -55,7 +55,7 @@ export default async function DocumentDetailPage({
   const datastore = catalystApp.datastore();
 
   const documentRows = (await datastore.table("Documents").getRows({
-    criteria: `Documents.ROWID == '${documentId}'`,
+    criteria: `Documents.ROWID = '${documentId}'`,
     maxRows: 1,
   })) as DocumentRow[];
   const document = documentRows[0];
@@ -65,14 +65,14 @@ export default async function DocumentDetailPage({
 
   const versions = (
     (await datastore.table("DocumentVersions").getRows({
-      criteria: `DocumentVersions.document_id == '${documentId}'`,
+      criteria: `DocumentVersions.document_id = '${documentId}'`,
     })) as DocumentVersionRow[]
   ).sort((a, b) => Number(b.version_number) - Number(a.version_number));
 
   const currentVersion = versions.find((v) => v.ROWID === document.current_version_id);
   const evidence = currentVersion
     ? ((await datastore.table("DocumentEvidenceLinks").getRows({
-        criteria: `DocumentEvidenceLinks.document_version_id == '${currentVersion.ROWID}'`,
+        criteria: `DocumentEvidenceLinks.document_version_id = '${currentVersion.ROWID}'`,
       })) as EvidenceLinkRow[])
     : [];
 

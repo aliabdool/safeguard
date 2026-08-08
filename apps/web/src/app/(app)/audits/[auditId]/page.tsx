@@ -32,7 +32,7 @@ export default async function AuditDetailPage({
   const datastore = catalystApp.datastore();
 
   const auditRows = (await datastore.table("Audits").getRows({
-    criteria: `Audits.ROWID == '${auditId}'`,
+    criteria: `Audits.ROWID = '${auditId}'`,
     maxRows: 1,
   })) as AuditRow[];
   const audit = auditRows[0];
@@ -43,7 +43,7 @@ export default async function AuditDetailPage({
   const [propertyRows, teamRows, allUsers] = await Promise.all([
     datastore
       .table("Properties")
-      .getRows({ criteria: `Properties.ROWID == '${audit.property_id}'`, maxRows: 1 }),
+      .getRows({ criteria: `Properties.ROWID = '${audit.property_id}'`, maxRows: 1 }),
     catalystApp.zcql().executeZCQLQuery(
       `select AuditTeamMembers.user_id, AuditTeamMembers.role_on_audit, Users.full_name from AuditTeamMembers left join Users on AuditTeamMembers.user_id = Users.ROWID where AuditTeamMembers.audit_id = '${auditId}'`,
     ) as Promise<

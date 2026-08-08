@@ -15,7 +15,7 @@ export async function nextAuditReference(catalystApp: CatalystApp): Promise<stri
   const rows = (await catalystApp
     .zcql()
     .executeZCQLQuery(
-      `select count(Audits.ROWID) as n from Audits where Audits.created_at between '${yearStart}' and '${yearEnd}'`,
+      `select count(Audits.ROWID) as n from Audits where Audits.created_at >= '${yearStart}' and Audits.created_at <= '${yearEnd}'`,
     )) as Array<{ Audits: { n: string } }>;
 
   const seq = Number(rows[0]?.Audits.n ?? "0") + 1;
@@ -31,7 +31,7 @@ export async function nextFindingNumber(catalystApp: CatalystApp): Promise<strin
   const rows = (await catalystApp
     .zcql()
     .executeZCQLQuery(
-      `select count(AuditFindings.ROWID) as n from AuditFindings where AuditFindings.raised_at between '${yearStart}' and '${yearEnd}'`,
+      `select count(AuditFindings.ROWID) as n from AuditFindings where AuditFindings.raised_at >= '${yearStart}' and AuditFindings.raised_at <= '${yearEnd}'`,
     )) as Array<{ AuditFindings: { n: string } }>;
 
   const seq = Number(rows[0]?.AuditFindings.n ?? "0") + 1;

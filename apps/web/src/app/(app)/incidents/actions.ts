@@ -220,7 +220,7 @@ export async function createIncidentAction(
 
   const propertyRows = (await datastore
     .table("Properties")
-    .getRows({ criteria: `Properties.ROWID == '${data.propertyId}'`, maxRows: 1 })) as Array<
+    .getRows({ criteria: `Properties.ROWID = '${data.propertyId}'`, maxRows: 1 })) as Array<
     CatalystRow & { code: string }
   >;
   const property = propertyRows[0];
@@ -231,7 +231,7 @@ export async function createIncidentAction(
   let injuryMechanismId: string | null = null;
   if (data.injuryMechanism) {
     const mechanismRows = (await datastore.table("InjuryMechanisms").getRows({
-      criteria: `InjuryMechanisms.code == '${data.injuryMechanism}'`,
+      criteria: `InjuryMechanisms.code = '${data.injuryMechanism}'`,
       maxRows: 1,
     })) as CatalystRow[];
     injuryMechanismId = mechanismRows[0]?.ROWID ?? null;
@@ -364,7 +364,7 @@ export async function recordIncidentNotificationAction(
   const datastore = catalystApp.datastore();
 
   const incidentRows = (await datastore.table("Incidents").getRows({
-    criteria: `Incidents.ROWID == '${parsed.data.incidentId}'`,
+    criteria: `Incidents.ROWID = '${parsed.data.incidentId}'`,
     maxRows: 1,
   })) as Array<CatalystRow & { property_id: string }>;
   const incident = incidentRows[0];
@@ -416,7 +416,7 @@ export async function advanceIncidentStatusAction(
   const datastore = catalystApp.datastore();
 
   const incidentRows = (await datastore.table("Incidents").getRows({
-    criteria: `Incidents.ROWID == '${incidentId}'`,
+    criteria: `Incidents.ROWID = '${incidentId}'`,
     maxRows: 1,
   })) as Array<CatalystRow & { property_id: string; department_id: string; status: string }>;
   const incident = incidentRows[0];
@@ -437,7 +437,7 @@ export async function advanceIncidentStatusAction(
 
   if (targetStatus === "closed" || targetStatus === "verifying") {
     const linkedCapaRows = (await datastore.table("CAPA").getRows({
-      criteria: `CAPA.source_type == 'incident' && CAPA.source_id == '${incidentId}'`,
+      criteria: `CAPA.source_type = 'incident' && CAPA.source_id = '${incidentId}'`,
     })) as Array<CatalystRow & { status: string }>;
     const openCapas = linkedCapaRows.filter(
       (c) => c.status !== "closed" && c.status !== "verified",

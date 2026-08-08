@@ -27,9 +27,9 @@ export default async function AccountPage() {
   const [profileRows, notificationRows] = await Promise.all([
     datastore
       .table("Users")
-      .getRows({ criteria: `Users.ROWID == '${ctx.userId}'`, maxRows: 1 }),
+      .getRows({ criteria: `Users.ROWID = '${ctx.userId}'`, maxRows: 1 }),
     catalystApp.zcql().executeZCQLQuery(
-      `select Notifications.ROWID, Notifications.title, Notifications.message, Notifications.read_at, Notifications.created_at from Notifications where Notifications.recipient_user_id == '${ctx.userId}' order by Notifications.created_at desc limit 50`,
+      `select Notifications.ROWID, Notifications.title, Notifications.message, Notifications.read_at, Notifications.created_at from Notifications where Notifications.recipient_user_id = '${ctx.userId}' order by Notifications.created_at desc limit 50`,
     ),
   ]);
 

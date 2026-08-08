@@ -31,20 +31,20 @@ type CalculationFn = (params: KpiCalculationParams) => Promise<KpiCalculationRes
  */
 const REGISTRY: Record<string, CalculationFn> = {
   TOTAL_INCIDENTS: (p) => countIncidentsInPeriod(p),
-  EMPLOYEE_INCIDENTS: (p) => countIncidentsInPeriod(p, "Incidents.person_event_type == 'employee'"),
+  EMPLOYEE_INCIDENTS: (p) => countIncidentsInPeriod(p, "Incidents.person_event_type = 'employee'"),
   CONTRACTOR_INCIDENTS: (p) =>
-    countIncidentsInPeriod(p, "Incidents.person_event_type == 'contractor'"),
-  GUEST_INCIDENTS: (p) => countIncidentsInPeriod(p, "Incidents.person_event_type == 'guest'"),
-  NEAR_MISSES: (p) => countIncidentsInPeriod(p, "Incidents.person_event_type == 'near_miss'"),
+    countIncidentsInPeriod(p, "Incidents.person_event_type = 'contractor'"),
+  GUEST_INCIDENTS: (p) => countIncidentsInPeriod(p, "Incidents.person_event_type = 'guest'"),
+  NEAR_MISSES: (p) => countIncidentsInPeriod(p, "Incidents.person_event_type = 'near_miss'"),
   UNSAFE_CONDITIONS: (p) =>
-    countIncidentsInPeriod(p, "Incidents.person_event_type == 'unsafe_condition'"),
-  HIGH_POTENTIAL: (p) => countIncidentsInPeriod(p, "Incidents.is_high_potential == true"),
-  HOSPITAL_REFERRALS: (p) => countIncidentsInPeriod(p, "Incidents.hospital_referral == true"),
-  TRAINEE_INCIDENTS: (p) => countIncidentsInPeriod(p, "Incidents.person_event_type == 'trainee'"),
+    countIncidentsInPeriod(p, "Incidents.person_event_type = 'unsafe_condition'"),
+  HIGH_POTENTIAL: (p) => countIncidentsInPeriod(p, "Incidents.is_high_potential = true"),
+  HOSPITAL_REFERRALS: (p) => countIncidentsInPeriod(p, "Incidents.hospital_referral = true"),
+  TRAINEE_INCIDENTS: (p) => countIncidentsInPeriod(p, "Incidents.person_event_type = 'trainee'"),
   REPORTABLE_OSH_CASES: (p) => countReportableOshCasesInPeriod(p),
-  FATALITIES: (p) => countIncidentsInPeriod(p, "Incidents.outcome == 'fatality'"),
+  FATALITIES: (p) => countIncidentsInPeriod(p, "Incidents.outcome = 'fatality'"),
   LTI: (p) => countIncidentsInPeriod(p, "Incidents.lost_workdays > 0"),
-  MTC: (p) => countIncidentsInPeriod(p, "Incidents.outcome == 'medical_treatment'"),
+  MTC: (p) => countIncidentsInPeriod(p, "Incidents.outcome = 'medical_treatment'"),
   RECORDABLE_INJURIES: (p) =>
     countIncidentsInPeriod(
       p,
@@ -111,7 +111,7 @@ export async function calculateKpi(
   const datastore = catalystApp.datastore();
 
   const definitionRows = (await datastore.table("KPIDefinitions").getRows({
-    criteria: `KPIDefinitions.kpi_code == '${kpiCode}'`,
+    criteria: `KPIDefinitions.kpi_code = '${kpiCode}'`,
     maxRows: 1,
   })) as unknown as KpiDefinitionRow[];
   const definition = definitionRows[0];

@@ -61,7 +61,7 @@ export default async function InvestigationPage({
   const datastore = catalystApp.datastore();
 
   const incidentRows = (await datastore.table("Incidents").getRows({
-    criteria: `Incidents.ROWID == '${incidentId}'`,
+    criteria: `Incidents.ROWID = '${incidentId}'`,
     maxRows: 1,
   })) as IncidentRow[];
   const incident = incidentRows[0];
@@ -70,7 +70,7 @@ export default async function InvestigationPage({
   }
 
   const investigationRows = (await datastore.table("IncidentInvestigation").getRows({
-    criteria: `IncidentInvestigation.incident_id == '${incidentId}'`,
+    criteria: `IncidentInvestigation.incident_id = '${incidentId}'`,
     maxRows: 1,
   })) as InvestigationRow[];
   const investigation = investigationRows[0];
@@ -97,22 +97,22 @@ export default async function InvestigationPage({
   const [causes, fiveWhys, witnesses, approvals] = await Promise.all([
     datastore
       .table("IncidentRootCauses")
-      .getRows({ criteria: `IncidentRootCauses.investigation_id == '${investigation.ROWID}'` }) as Promise<
+      .getRows({ criteria: `IncidentRootCauses.investigation_id = '${investigation.ROWID}'` }) as Promise<
       CauseRow[]
     >,
     datastore
       .table("IncidentFiveWhys")
-      .getRows({ criteria: `IncidentFiveWhys.investigation_id == '${investigation.ROWID}'` }) as Promise<
+      .getRows({ criteria: `IncidentFiveWhys.investigation_id = '${investigation.ROWID}'` }) as Promise<
       FiveWhyRow[]
     >,
     datastore
       .table("IncidentWitnesses")
-      .getRows({ criteria: `IncidentWitnesses.investigation_id == '${investigation.ROWID}'` }) as Promise<
+      .getRows({ criteria: `IncidentWitnesses.investigation_id = '${investigation.ROWID}'` }) as Promise<
       WitnessRow[]
     >,
     datastore
       .table("InvestigationApprovals")
-      .getRows({ criteria: `InvestigationApprovals.investigation_id == '${investigation.ROWID}'` }) as Promise<
+      .getRows({ criteria: `InvestigationApprovals.investigation_id = '${investigation.ROWID}'` }) as Promise<
       ApprovalRow[]
     >,
   ]);

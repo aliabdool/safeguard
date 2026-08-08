@@ -66,7 +66,7 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
   try {
     const userRows = await datastore
       .table("Users")
-      .getRows({ criteria: `Users.zuid == '${zohoUser.user_id}'`, maxRows: 1 });
+      .getRows({ criteria: `Users.zuid = '${zohoUser.user_id}'`, maxRows: 1 });
     const userRow = userRows[0] as UserRow | undefined;
     if (!userRow) {
       return null;
@@ -90,10 +90,10 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
       ),
       datastore
         .table("UserPropertyAccess")
-        .getRows({ criteria: `UserPropertyAccess.user_id == '${userRow.ROWID}'` }),
+        .getRows({ criteria: `UserPropertyAccess.user_id = '${userRow.ROWID}'` }),
       datastore
         .table("UserDepartmentAccess")
-        .getRows({ criteria: `UserDepartmentAccess.user_id == '${userRow.ROWID}'` }),
+        .getRows({ criteria: `UserDepartmentAccess.user_id = '${userRow.ROWID}'` }),
       zcql.executeZCQLQuery(
         `select UserPermissions.permission_code from UserPermissions where UserPermissions.user_id = '${userRow.ROWID}' and UserPermissions.permission_code in ('${MEDICAL_PERMISSION_CODES.join("', '")}') and UserPermissions.revoked_at is null`,
       ),

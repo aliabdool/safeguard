@@ -122,9 +122,9 @@ export default async function DashboardPage({
     );
 
     const incidentScope = selectedPropertyId
-      ? `Incidents.property_id == '${selectedPropertyId}'`
+      ? `Incidents.property_id = '${selectedPropertyId}'`
       : propertyScopeClause("Incidents.property_id", ctx);
-    const periodClause = `Incidents.occurred_at between '${selectedPeriod.start.toISOString()}' and '${selectedPeriod.end.toISOString()}'`;
+    const periodClause = `Incidents.occurred_at >= '${selectedPeriod.start.toISOString()}' and Incidents.occurred_at <= '${selectedPeriod.end.toISOString()}'`;
 
     const [byTypeRows, byDeptRows] = (await Promise.all([
       zcql.executeZCQLQuery(

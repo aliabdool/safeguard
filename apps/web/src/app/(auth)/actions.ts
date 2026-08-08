@@ -126,7 +126,7 @@ export async function signOutAction() {
     const userRows = await catalystApp
       .datastore()
       .table("Users")
-      .getRows({ criteria: `Users.zuid == '${zohoUser.user_id}'`, maxRows: 1 });
+      .getRows({ criteria: `Users.zuid = '${zohoUser.user_id}'`, maxRows: 1 });
     const userId = userRows[0]?.ROWID;
     if (userId) {
       await writeAuditLog({

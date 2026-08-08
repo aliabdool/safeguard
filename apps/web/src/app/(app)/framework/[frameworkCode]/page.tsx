@@ -64,7 +64,7 @@ export default async function FrameworkViewPage({
   const datastore = catalystApp.datastore();
 
   const frameworkRows = (await datastore.table("Frameworks").getRows({
-    criteria: `Frameworks.code == '${frameworkCode}'`,
+    criteria: `Frameworks.code = '${frameworkCode}'`,
     maxRows: 1,
   })) as FrameworkRow[];
   const framework = frameworkRows[0];

@@ -68,15 +68,15 @@ export async function createControlAssessmentAction(
   // alone either — select-then-write instead, same tradeoff as the incident-number allocator
   // (acceptable race window for v1 assessment-entry volume).
   const departmentClause = departmentId
-    ? `ControlAssessments.department_id == '${departmentId}'`
+    ? `ControlAssessments.department_id = '${departmentId}'`
     : `ControlAssessments.department_id is null`;
   const existingRows = (await datastore.table("ControlAssessments").getRows({
     criteria:
-      `ControlAssessments.control_id == '${data.controlId}' && ` +
-      `ControlAssessments.property_id == '${data.propertyId}' && ` +
+      `ControlAssessments.control_id = '${data.controlId}' && ` +
+      `ControlAssessments.property_id = '${data.propertyId}' && ` +
       `${departmentClause} && ` +
-      `ControlAssessments.period_label == '${data.periodLabel}' && ` +
-      `ControlAssessments.dimension == '${data.dimension}'`,
+      `ControlAssessments.period_label = '${data.periodLabel}' && ` +
+      `ControlAssessments.dimension = '${data.dimension}'`,
     maxRows: 1,
   })) as CatalystRow[];
   const existing = existingRows[0];

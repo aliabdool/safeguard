@@ -20,7 +20,7 @@ export async function nextIncidentNumber(
   const rows = (await catalystApp
     .zcql()
     .executeZCQLQuery(
-      `select count(Incidents.ROWID) as n from Incidents where Incidents.property_id = '${propertyId}' and Incidents.created_at between '${yearStart}' and '${yearEnd}'`,
+      `select count(Incidents.ROWID) as n from Incidents where Incidents.property_id = '${propertyId}' and Incidents.created_at >= '${yearStart}' and Incidents.created_at <= '${yearEnd}'`,
     )) as Array<{ Incidents: { n: string } }>;
 
   const seq = Number(rows[0]?.Incidents.n ?? "0") + 1;

@@ -37,7 +37,7 @@ export async function suspendUserAction(
 
   const userRows = await datastore
     .table("Users")
-    .getRows({ criteria: `Users.ROWID == '${parsed.data.userId}'`, maxRows: 1 }) as UserRow[];
+    .getRows({ criteria: `Users.ROWID = '${parsed.data.userId}'`, maxRows: 1 }) as UserRow[];
   const userRow = userRows[0];
   if (!userRow) {
     return { error: "User not found." };
@@ -86,7 +86,7 @@ export async function reactivateUserAction(
 
   const userRows = await datastore
     .table("Users")
-    .getRows({ criteria: `Users.ROWID == '${parsed.data.userId}'`, maxRows: 1 }) as UserRow[];
+    .getRows({ criteria: `Users.ROWID = '${parsed.data.userId}'`, maxRows: 1 }) as UserRow[];
   const userRow = userRows[0];
   if (!userRow) {
     return { error: "User not found." };

@@ -53,7 +53,7 @@ export default async function KpiDetailPage({
   const zcql = catalystApp.zcql();
 
   const definitionRows = (await datastore.table("KPIDefinitions").getRows({
-    criteria: `KPIDefinitions.kpi_code == '${kpiCode}'`,
+    criteria: `KPIDefinitions.kpi_code = '${kpiCode}'`,
     maxRows: 1,
   })) as unknown as KpiDefinitionRow[];
   const definition = definitionRows[0];
@@ -71,7 +71,7 @@ export default async function KpiDetailPage({
   const snapshotRows = (await zcql.executeZCQLQuery(
     `select KPISnapshots.current_value, KPISnapshots.comparison_value,
             KPISnapshots.data_quality_status, KPISnapshots.calculated_at
-     from KPISnapshots where KPISnapshots.kpi_code == '${kpiCode}'
+     from KPISnapshots where KPISnapshots.kpi_code = '${kpiCode}'
      order by KPISnapshots.calculated_at desc limit 5`,
   )) as Array<{ KPISnapshots: KpiSnapshotRow }>;
   const recentSnapshots = snapshotRows.map((r) => r.KPISnapshots);

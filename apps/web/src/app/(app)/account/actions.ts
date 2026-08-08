@@ -29,7 +29,7 @@ export async function markNotificationReadAction(
   // Catalyst's Data Store has no row-level-security equivalent, so this application-layer check
   // is now the sole enforcement (see apps/catalyst/data-store-schema/README.md).
   const rows = (await datastore.table("Notifications").getRows({
-    criteria: `Notifications.ROWID == '${parsed.data.notificationId}'`,
+    criteria: `Notifications.ROWID = '${parsed.data.notificationId}'`,
     maxRows: 1,
   })) as Array<CatalystRow & { recipient_user_id: string }>;
   const notification = rows[0];

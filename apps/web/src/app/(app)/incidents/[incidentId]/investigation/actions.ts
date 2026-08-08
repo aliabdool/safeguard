@@ -31,7 +31,7 @@ export async function assignInvestigatorAction(
   const datastore = catalystApp.datastore();
 
   const incidentRows = (await datastore.table("Incidents").getRows({
-    criteria: `Incidents.ROWID == '${parsed.data.incidentId}'`,
+    criteria: `Incidents.ROWID = '${parsed.data.incidentId}'`,
     maxRows: 1,
   })) as Array<CatalystRow & { property_id: string }>;
   const incident = incidentRows[0];
@@ -42,7 +42,7 @@ export async function assignInvestigatorAction(
   // Data Store has no upsert/onConflictDoUpdate — IncidentInvestigation.incident_id is unique per
   // the schema, so check for an existing row first rather than risk a duplicate-key failure.
   const existingRows = (await datastore.table("IncidentInvestigation").getRows({
-    criteria: `IncidentInvestigation.incident_id == '${parsed.data.incidentId}'`,
+    criteria: `IncidentInvestigation.incident_id = '${parsed.data.incidentId}'`,
     maxRows: 1,
   })) as CatalystRow[];
   const existing = existingRows[0];
@@ -211,7 +211,7 @@ export async function completeInvestigationAction(
   const datastore = catalystApp.datastore();
 
   const investigationRows = (await datastore.table("IncidentInvestigation").getRows({
-    criteria: `IncidentInvestigation.ROWID == '${parsed.data.investigationId}'`,
+    criteria: `IncidentInvestigation.ROWID = '${parsed.data.investigationId}'`,
     maxRows: 1,
   })) as Array<CatalystRow & { investigator_id: string }>;
   const investigation = investigationRows[0];

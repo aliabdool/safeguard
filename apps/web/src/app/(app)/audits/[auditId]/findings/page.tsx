@@ -42,7 +42,7 @@ export default async function FindingsPage({
   const datastore = catalystApp.datastore();
 
   const auditRows = (await datastore.table("Audits").getRows({
-    criteria: `Audits.ROWID == '${auditId}'`,
+    criteria: `Audits.ROWID = '${auditId}'`,
     maxRows: 1,
   })) as AuditRow[];
   const audit = auditRows[0];
@@ -52,7 +52,7 @@ export default async function FindingsPage({
 
   const [findings, allControls] = await Promise.all([
     datastore.table("AuditFindings").getRows({
-      criteria: `AuditFindings.audit_id == '${auditId}'`,
+      criteria: `AuditFindings.audit_id = '${auditId}'`,
     }) as Promise<FindingRow[]>,
     datastore.table("Controls").getRows({}) as Promise<
       Array<CatalystRow & { control_code: string }>

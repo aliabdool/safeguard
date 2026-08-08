@@ -19,7 +19,7 @@ export async function countOpenCriticalMajorFindings(
 ): Promise<KpiCalculationResult> {
   const zcql = params.catalystApp.zcql();
   const propClause = params.propertyId
-    ? `Audits.property_id == '${params.propertyId}'`
+    ? `Audits.property_id = '${params.propertyId}'`
     : propertyScopeClause("Audits.property_id", params.ctx);
 
   const rows = (await zcql.executeZCQLQuery(

@@ -181,7 +181,7 @@ export async function verifyCapaAction(
   const datastore = catalystApp.datastore();
 
   const capaRows = (await datastore.table("CAPA").getRows({
-    criteria: `CAPA.ROWID == '${parsed.data.capaId}'`,
+    criteria: `CAPA.ROWID = '${parsed.data.capaId}'`,
     maxRows: 1,
   })) as CapaRow[];
   const capa = capaRows[0];
@@ -250,7 +250,7 @@ export async function closeCapaAction(
   const datastore = catalystApp.datastore();
 
   const capaRows = (await datastore.table("CAPA").getRows({
-    criteria: `CAPA.ROWID == '${parsed.data.capaId}'`,
+    criteria: `CAPA.ROWID = '${parsed.data.capaId}'`,
     maxRows: 1,
   })) as CapaRow[];
   const capa = capaRows[0];

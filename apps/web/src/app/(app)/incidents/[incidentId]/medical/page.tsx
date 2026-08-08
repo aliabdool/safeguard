@@ -44,14 +44,14 @@ export default async function MedicalRecordsPage({
 
   const incidentRows = await datastore
     .table("Incidents")
-    .getRows({ criteria: `Incidents.ROWID == '${incidentId}'`, maxRows: 1 });
+    .getRows({ criteria: `Incidents.ROWID = '${incidentId}'`, maxRows: 1 });
   if (!incidentRows[0]) {
     notFound();
   }
 
   const records = (await datastore
     .table("MedicalNotes")
-    .getRows({ criteria: `MedicalNotes.incident_id == '${incidentId}'` })) as MedicalNoteRow[];
+    .getRows({ criteria: `MedicalNotes.incident_id = '${incidentId}'` })) as MedicalNoteRow[];
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">

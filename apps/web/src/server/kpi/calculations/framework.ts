@@ -57,7 +57,7 @@ export async function frameworkReadinessKpi(
   const zcql = params.catalystApp.zcql();
 
   const frameworkRows = await datastore.table("Frameworks").getRows({
-    criteria: `Frameworks.code == '${frameworkCode}'`,
+    criteria: `Frameworks.code = '${frameworkCode}'`,
     maxRows: 1,
   });
   const framework = frameworkRows[0];
@@ -83,7 +83,7 @@ export async function frameworkReadinessKpi(
   const legalControlIds = new Set(legalRows.map((r) => r.control_id));
 
   const propClause = params.propertyId
-    ? `ControlAssessments.property_id == '${params.propertyId}'`
+    ? `ControlAssessments.property_id = '${params.propertyId}'`
     : propertyScopeClause("ControlAssessments.property_id", params.ctx);
   const assessmentRows = (await datastore.table("ControlAssessments").getRows({
     criteria: propClause,

@@ -40,7 +40,7 @@ export default async function CapaDetailPage({
   const datastore = catalystApp.datastore();
 
   const capaRows = (await datastore.table("CAPA").getRows({
-    criteria: `CAPA.ROWID == '${capaId}'`,
+    criteria: `CAPA.ROWID = '${capaId}'`,
     maxRows: 1,
   })) as CapaRow[];
   const capa = capaRows[0];
@@ -50,17 +50,17 @@ export default async function CapaDetailPage({
 
   const [ownerRows, verifierRows, verifications] = await Promise.all([
     datastore.table("Users").getRows({
-      criteria: `Users.ROWID == '${capa.owner_id}'`,
+      criteria: `Users.ROWID = '${capa.owner_id}'`,
       maxRows: 1,
     }) as Promise<Array<CatalystRow & { full_name: string }>>,
     capa.verifier_id
       ? (datastore.table("Users").getRows({
-          criteria: `Users.ROWID == '${capa.verifier_id}'`,
+          criteria: `Users.ROWID = '${capa.verifier_id}'`,
           maxRows: 1,
         }) as Promise<Array<CatalystRow & { full_name: string }>>)
       : Promise.resolve([]),
     datastore.table("CAPAVerification").getRows({
-      criteria: `CAPAVerification.capa_id == '${capaId}'`,
+      criteria: `CAPAVerification.capa_id = '${capaId}'`,
     }) as Promise<VerificationRow[]>,
   ]);
   const owner = ownerRows[0];

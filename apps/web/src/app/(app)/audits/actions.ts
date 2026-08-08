@@ -154,7 +154,7 @@ export async function advanceAuditStatusAction(
   const datastore = catalystApp.datastore();
 
   const auditRows = (await datastore.table("Audits").getRows({
-    criteria: `Audits.ROWID == '${auditId}'`,
+    criteria: `Audits.ROWID = '${auditId}'`,
     maxRows: 1,
   })) as Array<CatalystRow & { status: string }>;
   const audit = auditRows[0];

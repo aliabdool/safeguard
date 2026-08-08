@@ -26,7 +26,7 @@ export async function advanceFindingStatusAction(
   const datastore = catalystApp.datastore();
 
   const findingRows = (await datastore.table("AuditFindings").getRows({
-    criteria: `AuditFindings.ROWID == '${findingId}'`,
+    criteria: `AuditFindings.ROWID = '${findingId}'`,
     maxRows: 1,
   })) as Array<CatalystRow & { status: string }>;
   const finding = findingRows[0];
@@ -42,7 +42,7 @@ export async function advanceFindingStatusAction(
 
   if (targetStatus === "closed") {
     const linkedCapaRows = (await datastore.table("CAPA").getRows({
-      criteria: `CAPA.source_type == 'audit_finding' && CAPA.source_id == '${findingId}'`,
+      criteria: `CAPA.source_type = 'audit_finding' && CAPA.source_id = '${findingId}'`,
     })) as Array<CatalystRow & { status: string }>;
     const openCapas = linkedCapaRows.filter((c) => c.status !== "closed");
     if (openCapas.length > 0) {

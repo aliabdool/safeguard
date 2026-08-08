@@ -98,7 +98,7 @@ async function resolveRecipient(
 
   if (entityType === "capa_actions") {
     const rows = (await datastore.table("CAPA").getRows({
-      criteria: `CAPA.ROWID == '${entityId}'`,
+      criteria: `CAPA.ROWID = '${entityId}'`,
       maxRows: 1,
     })) as Array<CatalystRow & { owner_id: string; capa_number: string }>;
     const row = rows[0];
@@ -107,7 +107,7 @@ async function resolveRecipient(
 
   if (entityType === "document_versions") {
     const rows = (await catalystApp.zcql().executeZCQLQuery(
-      `select Documents.owner_id, Documents.title from DocumentVersions left join Documents on DocumentVersions.document_id = Documents.ROWID where DocumentVersions.ROWID == '${entityId}'`,
+      `select Documents.owner_id, Documents.title from DocumentVersions left join Documents on DocumentVersions.document_id = Documents.ROWID where DocumentVersions.ROWID = '${entityId}'`,
     )) as Array<{ Documents: { owner_id: string; title: string } | null }>;
     const doc = rows[0]?.Documents;
     return doc ? { userId: doc.owner_id, label: doc.title } : null;

@@ -29,7 +29,7 @@ export async function isRateLimited(params: {
   const now = new Date().toISOString();
 
   const recent = (await catalystApp.zcql().executeZCQLQuery(
-    `select AuditTrail.ROWID from AuditTrail where AuditTrail.event_type = '${params.eventType}' and AuditTrail.ip_address = '${params.ipAddress}' and AuditTrail.occurred_at between '${windowStart}' and '${now}' limit ${params.maxAttempts + 1}`,
+    `select AuditTrail.ROWID from AuditTrail where AuditTrail.event_type = '${params.eventType}' and AuditTrail.ip_address = '${params.ipAddress}' and AuditTrail.occurred_at >= '${windowStart}' and AuditTrail.occurred_at <= '${now}' limit ${params.maxAttempts + 1}`,
   )) as unknown[];
 
   return recent.length >= params.maxAttempts;

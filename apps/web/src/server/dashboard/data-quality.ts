@@ -26,9 +26,9 @@ export async function computeDataQuality(params: {
   const datastore = catalystApp.datastore();
 
   const incidentScope = propertyId
-    ? `Incidents.property_id == '${propertyId}'`
+    ? `Incidents.property_id = '${propertyId}'`
     : propertyScopeClause("Incidents.property_id", ctx);
-  const periodClause = `Incidents.occurred_at between '${periodStart.toISOString()}' and '${periodEnd.toISOString()}'`;
+  const periodClause = `Incidents.occurred_at >= '${periodStart.toISOString()}' and Incidents.occurred_at <= '${periodEnd.toISOString()}'`;
 
   const inScopeIncidents = (await datastore.table("Incidents").getRows({
     criteria: `${incidentScope} && ${periodClause}`,
@@ -40,7 +40,7 @@ export async function computeDataQuality(params: {
     const rootCauseRows = (await zcql.executeZCQLQuery(
       `select IncidentInvestigation.incident_id from IncidentRootCauses
        left join IncidentInvestigation on IncidentRootCauses.investigation_id = IncidentInvestigation.ROWID
-       where IncidentRootCauses.cause_type == 'root'`,
+       where IncidentRootCauses.cause_type = 'root'`,
     )) as Array<{ IncidentInvestigation: { incident_id: string } }>;
     const rootCauseIncidentIds = new Set(
       rootCauseRows.map((r) => r.IncidentInvestigation.incident_id),
@@ -56,11 +56,11 @@ export async function computeDataQuality(params: {
   const pendingReportableRows = (await zcql.executeZCQLQuery(
     `select count(Incidents.ROWID) as n from Incidents
      left join IncidentOSHReportability on Incidents.ROWID = IncidentOSHReportability.incident_id
-     where ${incidentScope} && ${periodClause} && IncidentOSHReportability.reportable_status == 'pending_determination'`,
+     where ${incidentScope} && ${periodClause} && IncidentOSHReportability.reportable_status = 'pending_determination'`,
   )) as Array<{ Incidents: { n: string } }>;
 
   const capaScope = propertyId
-    ? `CAPA.property_id == '${propertyId}'`
+    ? `CAPA.property_id = '${propertyId}'`
     : propertyScopeClause("CAPA.property_id", ctx);
   const today = new Date().toISOString().slice(0, 10);
   const overdueCapaRows = (await zcql.executeZCQLQuery(
