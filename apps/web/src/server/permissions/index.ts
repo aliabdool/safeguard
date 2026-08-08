@@ -56,62 +56,74 @@ async function loadAuthContextFromCatalyst(catalystApp: CatalystApp): Promise<Au
   const datastore = catalystApp.datastore();
   const zcql = catalystApp.zcql();
 
-  const userRows = await datastore
-    .table("Users")
-    .getRows({ criteria: `Users.zuid == '${zohoUser.user_id}'`, maxRows: 1 });
-  const userRow = userRows[0] as UserRow | undefined;
-  if (!userRow) {
-    return null;
-  }
+  // TEMPORARY: this whole function is a prime suspect for a live "dashboard won't load after
+  // login" bug (see chat) — either the join value (user_id vs a separate top-level zuid the SDK
+  // also exposes — see CatalystUser's doc comment in lib/catalyst/app.ts) or the ZCQL operators
+  // (== / && are untested assumptions, never exercised against a live project before now) could be
+  // wrong. Logging the raw join value here and wrapping in try/catch so the real error — not
+  // Next.js's redacted digest — is visible in AppSail logs. Remove once confirmed working.
+  console.error("AUTH_DEBUG_zohoUser:", JSON.stringify(zohoUser));
+  try {
+    const userRows = await datastore
+      .table("Users")
+      .getRows({ criteria: `Users.zuid == '${zohoUser.user_id}'`, maxRows: 1 });
+    const userRow = userRows[0] as UserRow | undefined;
+    if (!userRow) {
+      return null;
+    }
 
-  if (userRow.status !== "active") {
+    if (userRow.status !== "active") {
+      return {
+        userId: userRow.ROWID,
+        fullName: userRow.full_name ?? "Unknown user",
+        status: userRow.status,
+        roleCodes: [],
+        propertyIds: [],
+        departmentAccess: new Map(),
+        hasMedicalPermission: false,
+      };
+    }
+
+    const [roleRows, propertyRows, departmentRows, medicalRows] = await Promise.all([
+      zcql.executeZCQLQuery(
+        `select Roles.code from UserRoles left join Roles on UserRoles.role_id = Roles.ROWID where UserRoles.user_id = '${userRow.ROWID}'`,
+      ),
+      datastore
+        .table("UserPropertyAccess")
+        .getRows({ criteria: `UserPropertyAccess.user_id == '${userRow.ROWID}'` }),
+      datastore
+        .table("UserDepartmentAccess")
+        .getRows({ criteria: `UserDepartmentAccess.user_id == '${userRow.ROWID}'` }),
+      zcql.executeZCQLQuery(
+        `select UserPermissions.permission_code from UserPermissions where UserPermissions.user_id = '${userRow.ROWID}' and UserPermissions.permission_code in ('${MEDICAL_PERMISSION_CODES.join("', '")}') and UserPermissions.revoked_at is null`,
+      ),
+    ]);
+
+    const departmentAccess = new Map<string, Set<string>>();
+    for (const row of departmentRows as unknown as Array<{
+      property_id: string;
+      department_id: string;
+    }>) {
+      const set = departmentAccess.get(row.property_id) ?? new Set<string>();
+      set.add(row.department_id);
+      departmentAccess.set(row.property_id, set);
+    }
+
     return {
       userId: userRow.ROWID,
       fullName: userRow.full_name ?? "Unknown user",
-      status: userRow.status,
-      roleCodes: [],
-      propertyIds: [],
-      departmentAccess: new Map(),
-      hasMedicalPermission: false,
+      status: "active",
+      roleCodes: (roleRows as Array<{ Roles: { code: RoleCode } }>).map((r) => r.Roles.code),
+      propertyIds: (propertyRows as unknown as Array<{ property_id: string }>).map(
+        (r) => r.property_id,
+      ),
+      departmentAccess,
+      hasMedicalPermission: (medicalRows as unknown[]).length > 0,
     };
+  } catch (err) {
+    console.error("AUTH_DEBUG_REAL_ERROR:", err instanceof Error ? err.stack : err);
+    throw err;
   }
-
-  const [roleRows, propertyRows, departmentRows, medicalRows] = await Promise.all([
-    zcql.executeZCQLQuery(
-      `select Roles.code from UserRoles left join Roles on UserRoles.role_id = Roles.ROWID where UserRoles.user_id = '${userRow.ROWID}'`,
-    ),
-    datastore
-      .table("UserPropertyAccess")
-      .getRows({ criteria: `UserPropertyAccess.user_id == '${userRow.ROWID}'` }),
-    datastore
-      .table("UserDepartmentAccess")
-      .getRows({ criteria: `UserDepartmentAccess.user_id == '${userRow.ROWID}'` }),
-    zcql.executeZCQLQuery(
-      `select UserPermissions.permission_code from UserPermissions where UserPermissions.user_id = '${userRow.ROWID}' and UserPermissions.permission_code in ('${MEDICAL_PERMISSION_CODES.join("', '")}') and UserPermissions.revoked_at is null`,
-    ),
-  ]);
-
-  const departmentAccess = new Map<string, Set<string>>();
-  for (const row of departmentRows as unknown as Array<{
-    property_id: string;
-    department_id: string;
-  }>) {
-    const set = departmentAccess.get(row.property_id) ?? new Set<string>();
-    set.add(row.department_id);
-    departmentAccess.set(row.property_id, set);
-  }
-
-  return {
-    userId: userRow.ROWID,
-    fullName: userRow.full_name ?? "Unknown user",
-    status: "active",
-    roleCodes: (roleRows as Array<{ Roles: { code: RoleCode } }>).map((r) => r.Roles.code),
-    propertyIds: (propertyRows as unknown as Array<{ property_id: string }>).map(
-      (r) => r.property_id,
-    ),
-    departmentAccess,
-    hasMedicalPermission: (medicalRows as unknown[]).length > 0,
-  };
 }
 
 export async function getAuthContext(): Promise<AuthContext | null> {
