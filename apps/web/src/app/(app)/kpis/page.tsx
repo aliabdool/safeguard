@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { calculateKpi, isKpiImplemented } from "@/server/kpi/calculate";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
@@ -51,10 +52,8 @@ export default async function KpisPage({
   const notYetImplemented = definitions.filter((d) => !isKpiImplemented(d.kpi_code));
 
   const tiles = ctx
-    ? await Promise.all(
-        implemented.map((d) =>
-          calculateKpi(catalystApp, ctx, d.kpi_code, { propertyId: selectedPropertyId }),
-        ),
+    ? await mapWithConcurrency(implemented, 4, (d) =>
+        calculateKpi(catalystApp, ctx, d.kpi_code, { propertyId: selectedPropertyId }),
       )
     : [];
 

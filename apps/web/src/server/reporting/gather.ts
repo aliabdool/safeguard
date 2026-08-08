@@ -1,6 +1,7 @@
 import "server-only";
 
 import { catalystAdminApp, type CatalystApp, type CatalystRow } from "@/lib/catalyst/app";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi, type KpiTileResult } from "@/server/kpi/calculate";
 import { financialYearFor } from "@/server/kpi/period";
@@ -66,10 +67,8 @@ async function gatherKpis(
   asOfAnchor: Date,
 ): Promise<KpiTileResult[]> {
   const catalystApp = catalystAdminApp();
-  const results = await Promise.all(
-    NARRATIVE_KPI_CODES.map((code) =>
-      calculateKpi(catalystApp, SYSTEM_CTX, code, { propertyId, asOf: asOfAnchor }),
-    ),
+  const results = await mapWithConcurrency(NARRATIVE_KPI_CODES, 4, (code) =>
+    calculateKpi(catalystApp, SYSTEM_CTX, code, { propertyId, asOf: asOfAnchor }),
   );
   return results.filter((r): r is KpiTileResult => r !== null);
 }

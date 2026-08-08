@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi } from "@/server/kpi/calculate";
 import { financialYearFor, recentFinancialYears } from "@/server/kpi/period";
@@ -112,13 +113,11 @@ export default async function DashboardPage({
     selectedFy = fyOptions.find((o) => o.label === fy) ?? fyOptions[0]!;
     selectedPeriod = financialYearFor(selectedFy.asOfAnchor).period;
 
-    tiles = await Promise.all(
-      HEADLINE_KPI_CODES.map((code) =>
-        calculateKpi(catalystApp, ctx, code, {
-          propertyId: selectedPropertyId,
-          asOf: selectedFy.asOfAnchor,
-        }),
-      ),
+    tiles = await mapWithConcurrency(HEADLINE_KPI_CODES, 4, (code) =>
+      calculateKpi(catalystApp, ctx, code, {
+        propertyId: selectedPropertyId,
+        asOf: selectedFy.asOfAnchor,
+      }),
     );
 
     const incidentScope = selectedPropertyId
