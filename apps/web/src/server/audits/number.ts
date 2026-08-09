@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 
 /**
  * `AUD-{year}-{seq}`. Computed from a same-year count rather than a DB sequence — acceptable for
@@ -9,8 +10,8 @@ import type { CatalystApp } from "@/lib/catalyst/app";
  */
 export async function nextAuditReference(catalystApp: CatalystApp): Promise<string> {
   const year = new Date().getFullYear();
-  const yearStart = new Date(Date.UTC(year, 0, 1)).toISOString();
-  const yearEnd = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+  const yearStart = toZcqlDateTime(new Date(Date.UTC(year, 0, 1)));
+  const yearEnd = toZcqlDateTime(new Date(Date.UTC(year + 1, 0, 1)));
 
   const rows = (await catalystApp
     .zcql()
@@ -25,8 +26,8 @@ export async function nextAuditReference(catalystApp: CatalystApp): Promise<stri
 /** `FND-{year}-{seq}`. Same approach as nextAuditReference(), keyed off AuditFindings.raised_at. */
 export async function nextFindingNumber(catalystApp: CatalystApp): Promise<string> {
   const year = new Date().getFullYear();
-  const yearStart = new Date(Date.UTC(year, 0, 1)).toISOString();
-  const yearEnd = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+  const yearStart = toZcqlDateTime(new Date(Date.UTC(year, 0, 1)));
+  const yearEnd = toZcqlDateTime(new Date(Date.UTC(year + 1, 0, 1)));
 
   const rows = (await catalystApp
     .zcql()

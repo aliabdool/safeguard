@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 
 /**
  * `INC-{PROPERTY_CODE}-{YEAR}-{seq}`. Computed from a same-year count rather than a DB sequence —
@@ -14,8 +15,8 @@ export async function nextIncidentNumber(
   propertyId: string,
 ): Promise<string> {
   const year = new Date().getFullYear();
-  const yearStart = new Date(Date.UTC(year, 0, 1)).toISOString();
-  const yearEnd = new Date(Date.UTC(year + 1, 0, 1)).toISOString();
+  const yearStart = toZcqlDateTime(new Date(Date.UTC(year, 0, 1)));
+  const yearEnd = toZcqlDateTime(new Date(Date.UTC(year + 1, 0, 1)));
 
   const rows = (await catalystApp
     .zcql()

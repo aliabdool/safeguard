@@ -19,6 +19,7 @@ import {
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { logDebugError } from "@/lib/debug-log";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi } from "@/server/kpi/calculate";
 import { financialYearFor, recentFinancialYears } from "@/server/kpi/period";
@@ -124,7 +125,7 @@ export default async function DashboardPage({
     const incidentScope = selectedPropertyId
       ? `Incidents.property_id = '${selectedPropertyId}'`
       : propertyScopeClause("Incidents.property_id", ctx);
-    const periodClause = `Incidents.occurred_at >= '${selectedPeriod.start.toISOString()}' and Incidents.occurred_at <= '${selectedPeriod.end.toISOString()}'`;
+    const periodClause = `Incidents.occurred_at >= '${toZcqlDateTime(selectedPeriod.start)}' and Incidents.occurred_at <= '${toZcqlDateTime(selectedPeriod.end)}'`;
 
     // Incidents.department_id is a plain Text column, not a real Lookup/FK to Departments —
     // confirmed live via the ZCQL Console ("No relationship between tables Departments and

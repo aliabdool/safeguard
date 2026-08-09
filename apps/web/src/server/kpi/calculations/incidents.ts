@@ -1,5 +1,7 @@
 import "server-only";
 
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
+
 import { propertyScopeClause } from "../scope";
 import type { KpiCalculationParams, KpiCalculationResult } from "../types";
 
@@ -53,10 +55,10 @@ export async function countIncidentsInPeriod(
   const extra = extraClause ? ` and ${extraClause}` : "";
 
   const currentRows = await datastore.table("Incidents").getRows({
-    criteria: `${propClause}${deptClause}${extra} and Incidents.occurred_at >= '${params.periodStart.toISOString()}' and Incidents.occurred_at <= '${params.periodEnd.toISOString()}'`,
+    criteria: `${propClause}${deptClause}${extra} and Incidents.occurred_at >= '${toZcqlDateTime(params.periodStart)}' and Incidents.occurred_at <= '${toZcqlDateTime(params.periodEnd)}'`,
   });
   const comparisonRows = await datastore.table("Incidents").getRows({
-    criteria: `${propClause}${deptClause}${extra} and Incidents.occurred_at >= '${params.comparisonPeriodStart.toISOString()}' and Incidents.occurred_at < '${params.comparisonPeriodEnd.toISOString()}'`,
+    criteria: `${propClause}${deptClause}${extra} and Incidents.occurred_at >= '${toZcqlDateTime(params.comparisonPeriodStart)}' and Incidents.occurred_at < '${toZcqlDateTime(params.comparisonPeriodEnd)}'`,
   });
 
   return {
@@ -106,13 +108,13 @@ export async function countReportableOshCasesInPeriod(
 
   const currentIds = await countInRange(
     "between",
-    params.periodStart.toISOString(),
-    params.periodEnd.toISOString(),
+    toZcqlDateTime(params.periodStart),
+    toZcqlDateTime(params.periodEnd),
   );
   const comparisonIds = await countInRange(
     "half-open",
-    params.comparisonPeriodStart.toISOString(),
-    params.comparisonPeriodEnd.toISOString(),
+    toZcqlDateTime(params.comparisonPeriodStart),
+    toZcqlDateTime(params.comparisonPeriodEnd),
   );
 
   return {
@@ -132,10 +134,10 @@ async function sumIncidentField(
   const { propClause, deptClause } = incidentScopeClause(params);
 
   const currentRows = (await datastore.table("Incidents").getRows({
-    criteria: `${propClause}${deptClause} and Incidents.occurred_at >= '${params.periodStart.toISOString()}' and Incidents.occurred_at <= '${params.periodEnd.toISOString()}'`,
+    criteria: `${propClause}${deptClause} and Incidents.occurred_at >= '${toZcqlDateTime(params.periodStart)}' and Incidents.occurred_at <= '${toZcqlDateTime(params.periodEnd)}'`,
   })) as IncidentSumRow[];
   const comparisonRows = (await datastore.table("Incidents").getRows({
-    criteria: `${propClause}${deptClause} and Incidents.occurred_at >= '${params.comparisonPeriodStart.toISOString()}' and Incidents.occurred_at < '${params.comparisonPeriodEnd.toISOString()}'`,
+    criteria: `${propClause}${deptClause} and Incidents.occurred_at >= '${toZcqlDateTime(params.comparisonPeriodStart)}' and Incidents.occurred_at < '${toZcqlDateTime(params.comparisonPeriodEnd)}'`,
   })) as IncidentSumRow[];
 
   return {

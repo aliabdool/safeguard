@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { propertyScopeClause } from "@/server/kpi/scope";
 import type { AuthContext } from "@/server/permissions";
 
@@ -28,7 +29,7 @@ export async function computeDataQuality(params: {
   const incidentScope = propertyId
     ? `Incidents.property_id = '${propertyId}'`
     : propertyScopeClause("Incidents.property_id", ctx);
-  const periodClause = `Incidents.occurred_at >= '${periodStart.toISOString()}' and Incidents.occurred_at <= '${periodEnd.toISOString()}'`;
+  const periodClause = `Incidents.occurred_at >= '${toZcqlDateTime(periodStart)}' and Incidents.occurred_at <= '${toZcqlDateTime(periodEnd)}'`;
 
   const inScopeIncidents = (await datastore.table("Incidents").getRows({
     criteria: `${incidentScope} and ${periodClause}`,

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { catalystAdminApp } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 
 /**
  * Application-layer rate limiting keyed on IP address, backed by Catalyst's AuditTrail table
@@ -25,8 +26,8 @@ export async function isRateLimited(params: {
   }
 
   const catalystApp = catalystAdminApp();
-  const windowStart = new Date(Date.now() - params.windowMinutes * 60 * 1000).toISOString();
-  const now = new Date().toISOString();
+  const windowStart = toZcqlDateTime(new Date(Date.now() - params.windowMinutes * 60 * 1000));
+  const now = toZcqlDateTime(new Date());
 
   const recent = (await catalystApp.zcql().executeZCQLQuery(
     `select AuditTrail.ROWID from AuditTrail where AuditTrail.event_type = '${params.eventType}' and AuditTrail.ip_address = '${params.ipAddress}' and AuditTrail.occurred_at >= '${windowStart}' and AuditTrail.occurred_at <= '${now}' limit ${params.maxAttempts + 1}`,

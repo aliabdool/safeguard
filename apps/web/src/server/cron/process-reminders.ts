@@ -1,6 +1,7 @@
 import "server-only";
 
 import { catalystAdminApp, type CatalystApp, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 
 const REMINDER_COPY: Record<string, { title: string; body: (entityLabel: string) => string }> =
   {
@@ -42,7 +43,7 @@ export async function processDueReminders(
   const datastore = catalystApp.datastore();
 
   const due = (await datastore.table("ScheduledReminders").getRows({
-    criteria: `ScheduledReminders.remind_at <= '${now.toISOString()}' and ScheduledReminders.sent_at is null`,
+    criteria: `ScheduledReminders.remind_at <= '${toZcqlDateTime(now)}' and ScheduledReminders.sent_at is null`,
   })) as ReminderRow[];
 
   let processed = 0;

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
+
 import { propertyScopeClause } from "../scope";
 import type { KpiCalculationParams, KpiCalculationResult } from "../types";
 
@@ -28,7 +30,7 @@ export async function capaClosedOnTimeRate(
 
   async function rate(start: Date, end: Date) {
     const closed = (await datastore.table("CAPA").getRows({
-      criteria: `${scope} and CAPA.status = 'closed' and CAPA.final_approved_at >= '${start.toISOString()}' and CAPA.final_approved_at <= '${end.toISOString()}'`,
+      criteria: `${scope} and CAPA.status = 'closed' and CAPA.final_approved_at >= '${toZcqlDateTime(start)}' and CAPA.final_approved_at <= '${toZcqlDateTime(end)}'`,
     })) as unknown as CapaRow[];
     if (closed.length === 0) {
       return { value: null as number | null, ids: [] as string[] };
@@ -78,7 +80,7 @@ export async function capaEffectivenessRate(
       return { value: null as number | null, ids: [] as string[] };
     }
     const verifications = (await datastore.table("CAPAVerification").getRows({
-      criteria: `CAPAVerification.capa_id in (${capaIds.map((id) => `'${id}'`).join(",")}) and CAPAVerification.verified_at >= '${start.toISOString()}' and CAPAVerification.verified_at <= '${end.toISOString()}'`,
+      criteria: `CAPAVerification.capa_id in (${capaIds.map((id) => `'${id}'`).join(",")}) and CAPAVerification.verified_at >= '${toZcqlDateTime(start)}' and CAPAVerification.verified_at <= '${toZcqlDateTime(end)}'`,
     })) as unknown as Array<{ ROWID: string; outcome: string }>;
     if (verifications.length === 0) {
       return { value: null as number | null, ids: [] as string[] };
