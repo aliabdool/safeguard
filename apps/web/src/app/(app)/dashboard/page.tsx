@@ -133,12 +133,12 @@ export default async function DashboardPage({
     const [byTypeRows, byDeptIdRows] = (await Promise.all([
       zcql.executeZCQLQuery(
         `select Incidents.incident_type, count(Incidents.ROWID) as n from Incidents
-         where ${incidentScope} && ${periodClause}
+         where ${incidentScope} and ${periodClause}
          group by Incidents.incident_type`,
       ),
       zcql.executeZCQLQuery(
         `select Incidents.department_id, count(Incidents.ROWID) as n from Incidents
-         where ${incidentScope} && ${periodClause}
+         where ${incidentScope} and ${periodClause}
          group by Incidents.department_id`,
       ),
     ])) as [

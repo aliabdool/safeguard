@@ -28,7 +28,7 @@ function incidentScopeClause(params: KpiCalculationParams): { propClause: string
     ? `Incidents.property_id = '${params.propertyId}'`
     : propertyScopeClause("Incidents.property_id", params.ctx);
   const deptClause = params.departmentId
-    ? ` && Incidents.department_id = '${params.departmentId}'`
+    ? ` and Incidents.department_id = '${params.departmentId}'`
     : "";
   return { propClause, deptClause };
 }
@@ -50,13 +50,13 @@ export async function countIncidentsInPeriod(
 ): Promise<KpiCalculationResult> {
   const datastore = params.catalystApp.datastore();
   const { propClause, deptClause } = incidentScopeClause(params);
-  const extra = extraClause ? ` && ${extraClause}` : "";
+  const extra = extraClause ? ` and ${extraClause}` : "";
 
   const currentRows = await datastore.table("Incidents").getRows({
-    criteria: `${propClause}${deptClause}${extra} && Incidents.occurred_at >= '${params.periodStart.toISOString()}' and Incidents.occurred_at <= '${params.periodEnd.toISOString()}'`,
+    criteria: `${propClause}${deptClause}${extra} and Incidents.occurred_at >= '${params.periodStart.toISOString()}' and Incidents.occurred_at <= '${params.periodEnd.toISOString()}'`,
   });
   const comparisonRows = await datastore.table("Incidents").getRows({
-    criteria: `${propClause}${deptClause}${extra} && Incidents.occurred_at >= '${params.comparisonPeriodStart.toISOString()}' && Incidents.occurred_at < '${params.comparisonPeriodEnd.toISOString()}'`,
+    criteria: `${propClause}${deptClause}${extra} and Incidents.occurred_at >= '${params.comparisonPeriodStart.toISOString()}' and Incidents.occurred_at < '${params.comparisonPeriodEnd.toISOString()}'`,
   });
 
   return {
@@ -92,14 +92,14 @@ export async function countReportableOshCasesInPeriod(
     const rangeClause =
       op === "between"
         ? `Incidents.occurred_at >= '${start}' and Incidents.occurred_at <= '${end}'`
-        : `Incidents.occurred_at >= '${start}' && Incidents.occurred_at < '${end}'`;
+        : `Incidents.occurred_at >= '${start}' and Incidents.occurred_at < '${end}'`;
     const incidentRows = (await datastore.table("Incidents").getRows({
-      criteria: `${propClause}${deptClause} && ${rangeClause}`,
+      criteria: `${propClause}${deptClause} and ${rangeClause}`,
     })) as unknown as Array<{ ROWID: string }>;
     const incidentIds = incidentRows.map((r) => r.ROWID);
     if (incidentIds.length === 0) return [];
     const reportableRows = (await datastore.table("IncidentOSHReportability").getRows({
-      criteria: `IncidentOSHReportability.incident_id in (${incidentIds.map((id) => `'${id}'`).join(",")}) && IncidentOSHReportability.reportable_status = 'yes'`,
+      criteria: `IncidentOSHReportability.incident_id in (${incidentIds.map((id) => `'${id}'`).join(",")}) and IncidentOSHReportability.reportable_status = 'yes'`,
     })) as unknown as Array<{ incident_id: string }>;
     return reportableRows.map((r) => r.incident_id);
   }
@@ -132,10 +132,10 @@ async function sumIncidentField(
   const { propClause, deptClause } = incidentScopeClause(params);
 
   const currentRows = (await datastore.table("Incidents").getRows({
-    criteria: `${propClause}${deptClause} && Incidents.occurred_at >= '${params.periodStart.toISOString()}' and Incidents.occurred_at <= '${params.periodEnd.toISOString()}'`,
+    criteria: `${propClause}${deptClause} and Incidents.occurred_at >= '${params.periodStart.toISOString()}' and Incidents.occurred_at <= '${params.periodEnd.toISOString()}'`,
   })) as IncidentSumRow[];
   const comparisonRows = (await datastore.table("Incidents").getRows({
-    criteria: `${propClause}${deptClause} && Incidents.occurred_at >= '${params.comparisonPeriodStart.toISOString()}' && Incidents.occurred_at < '${params.comparisonPeriodEnd.toISOString()}'`,
+    criteria: `${propClause}${deptClause} and Incidents.occurred_at >= '${params.comparisonPeriodStart.toISOString()}' and Incidents.occurred_at < '${params.comparisonPeriodEnd.toISOString()}'`,
   })) as IncidentSumRow[];
 
   return {

@@ -42,7 +42,7 @@ export async function advanceFindingStatusAction(
 
   if (targetStatus === "closed") {
     const linkedCapaRows = (await datastore.table("CAPA").getRows({
-      criteria: `CAPA.source_type = 'audit_finding' && CAPA.source_id = '${findingId}'`,
+      criteria: `CAPA.source_type = 'audit_finding' and CAPA.source_id = '${findingId}'`,
     })) as Array<CatalystRow & { status: string }>;
     const openCapas = linkedCapaRows.filter((c) => c.status !== "closed");
     if (openCapas.length > 0) {

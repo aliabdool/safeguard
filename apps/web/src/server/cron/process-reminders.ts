@@ -42,7 +42,7 @@ export async function processDueReminders(
   const datastore = catalystApp.datastore();
 
   const due = (await datastore.table("ScheduledReminders").getRows({
-    criteria: `ScheduledReminders.remind_at <= '${now.toISOString()}' && ScheduledReminders.sent_at is null`,
+    criteria: `ScheduledReminders.remind_at <= '${now.toISOString()}' and ScheduledReminders.sent_at is null`,
   })) as ReminderRow[];
 
   let processed = 0;

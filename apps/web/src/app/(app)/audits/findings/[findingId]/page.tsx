@@ -57,7 +57,7 @@ export default async function FindingDetailPage({
   }
 
   const linkedCapas = (await datastore.table("CAPA").getRows({
-    criteria: `CAPA.source_type = 'audit_finding' && CAPA.source_id = '${findingId}'`,
+    criteria: `CAPA.source_type = 'audit_finding' and CAPA.source_id = '${findingId}'`,
   })) as CapaRow[];
 
   return (

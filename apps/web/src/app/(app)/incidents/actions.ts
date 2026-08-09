@@ -437,7 +437,7 @@ export async function advanceIncidentStatusAction(
 
   if (targetStatus === "closed" || targetStatus === "verifying") {
     const linkedCapaRows = (await datastore.table("CAPA").getRows({
-      criteria: `CAPA.source_type = 'incident' && CAPA.source_id = '${incidentId}'`,
+      criteria: `CAPA.source_type = 'incident' and CAPA.source_id = '${incidentId}'`,
     })) as Array<CatalystRow & { status: string }>;
     const openCapas = linkedCapaRows.filter(
       (c) => c.status !== "closed" && c.status !== "verified",

@@ -72,10 +72,10 @@ export async function createControlAssessmentAction(
     : `ControlAssessments.department_id is null`;
   const existingRows = (await datastore.table("ControlAssessments").getRows({
     criteria:
-      `ControlAssessments.control_id = '${data.controlId}' && ` +
-      `ControlAssessments.property_id = '${data.propertyId}' && ` +
-      `${departmentClause} && ` +
-      `ControlAssessments.period_label = '${data.periodLabel}' && ` +
+      `ControlAssessments.control_id = '${data.controlId}' and ` +
+      `ControlAssessments.property_id = '${data.propertyId}' and ` +
+      `${departmentClause} and ` +
+      `ControlAssessments.period_label = '${data.periodLabel}' and ` +
       `ControlAssessments.dimension = '${data.dimension}'`,
     maxRows: 1,
   })) as CatalystRow[];

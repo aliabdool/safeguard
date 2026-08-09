@@ -15,7 +15,7 @@ function capaScopeClause(params: KpiCalculationParams, table = "CAPA"): string {
   const propClause = params.propertyId
     ? `${table}.property_id = '${params.propertyId}'`
     : propertyScopeClause(`${table}.property_id`, params.ctx);
-  const deptClause = params.departmentId ? ` && ${table}.department_id = '${params.departmentId}'` : "";
+  const deptClause = params.departmentId ? ` and ${table}.department_id = '${params.departmentId}'` : "";
   return `${propClause}${deptClause}`;
 }
 
@@ -28,7 +28,7 @@ export async function capaClosedOnTimeRate(
 
   async function rate(start: Date, end: Date) {
     const closed = (await datastore.table("CAPA").getRows({
-      criteria: `${scope} && CAPA.status = 'closed' && CAPA.final_approved_at >= '${start.toISOString()}' and CAPA.final_approved_at <= '${end.toISOString()}'`,
+      criteria: `${scope} and CAPA.status = 'closed' and CAPA.final_approved_at >= '${start.toISOString()}' and CAPA.final_approved_at <= '${end.toISOString()}'`,
     })) as unknown as CapaRow[];
     if (closed.length === 0) {
       return { value: null as number | null, ids: [] as string[] };
@@ -78,7 +78,7 @@ export async function capaEffectivenessRate(
       return { value: null as number | null, ids: [] as string[] };
     }
     const verifications = (await datastore.table("CAPAVerification").getRows({
-      criteria: `CAPAVerification.capa_id in (${capaIds.map((id) => `'${id}'`).join(",")}) && CAPAVerification.verified_at >= '${start.toISOString()}' and CAPAVerification.verified_at <= '${end.toISOString()}'`,
+      criteria: `CAPAVerification.capa_id in (${capaIds.map((id) => `'${id}'`).join(",")}) and CAPAVerification.verified_at >= '${start.toISOString()}' and CAPAVerification.verified_at <= '${end.toISOString()}'`,
     })) as unknown as Array<{ ROWID: string; outcome: string }>;
     if (verifications.length === 0) {
       return { value: null as number | null, ids: [] as string[] };

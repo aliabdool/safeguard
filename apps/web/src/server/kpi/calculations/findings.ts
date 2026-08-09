@@ -36,7 +36,7 @@ export async function countOpenCriticalMajorFindings(
   }
 
   const rows = (await datastore.table("AuditFindings").getRows({
-    criteria: `AuditFindings.audit_id in (${auditIds.map((id) => `'${id}'`).join(",")}) && AuditFindings.classification in ('critical_nc','major_nc') && AuditFindings.status in ('open','action_assigned','verified')`,
+    criteria: `AuditFindings.audit_id in (${auditIds.map((id) => `'${id}'`).join(",")}) and AuditFindings.classification in ('critical_nc','major_nc') and AuditFindings.status in ('open','action_assigned','verified')`,
   })) as unknown as Array<{ ROWID: string }>;
 
   return {

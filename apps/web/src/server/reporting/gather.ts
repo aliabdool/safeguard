@@ -125,7 +125,7 @@ export async function gatherAssurancePackInput(
   // queries are unscoped (no WHERE predicate) rather than restricted to the caller's accessible
   // property set — same as the Drizzle version's `gapScopePredicate = propertyId ? eq(...) :
   // undefined`. Not a new gap introduced by this migration, just preserved as-is.
-  const gapScope = propertyId ? `CriticalGaps.property_id = '${propertyId}' && ` : "";
+  const gapScope = propertyId ? `CriticalGaps.property_id = '${propertyId}' and ` : "";
   const gapRows = (await zcql.executeZCQLQuery(
     `select count(distinct CriticalGaps.control_id) as n from CriticalGaps where ${gapScope}CriticalGaps.resolved_at is null`,
   )) as Array<{ CriticalGaps: { n: string } }>;
@@ -146,10 +146,10 @@ export async function gatherAssurancePackInput(
   const openFindings: OpenFindingRow[] = [];
   if (!findingAuditIds || findingAuditIds.length > 0) {
     const auditIdClause = findingAuditIds
-      ? `AuditFindings.audit_id in (${findingAuditIds.map((id) => `'${id}'`).join(",")}) && `
+      ? `AuditFindings.audit_id in (${findingAuditIds.map((id) => `'${id}'`).join(",")}) and `
       : "";
     const findingRows = (await catalystApp.datastore().table("AuditFindings").getRows({
-      criteria: `${auditIdClause}AuditFindings.classification in ('critical_nc','major_nc') && AuditFindings.status != 'closed'`,
+      criteria: `${auditIdClause}AuditFindings.classification in ('critical_nc','major_nc') and AuditFindings.status != 'closed'`,
     })) as unknown as Array<{
       ROWID: string;
       classification: string;

@@ -31,7 +31,7 @@ export async function computeDataQuality(params: {
   const periodClause = `Incidents.occurred_at >= '${periodStart.toISOString()}' and Incidents.occurred_at <= '${periodEnd.toISOString()}'`;
 
   const inScopeIncidents = (await datastore.table("Incidents").getRows({
-    criteria: `${incidentScope} && ${periodClause}`,
+    criteria: `${incidentScope} and ${periodClause}`,
   })) as Array<{ ROWID: string; status: string }>;
   const needingInvestigation = inScopeIncidents.filter((i) => i.status !== "reported");
 
@@ -50,7 +50,7 @@ export async function computeDataQuality(params: {
 
   const missingInjuryMechanismRows = (await zcql.executeZCQLQuery(
     `select count(Incidents.ROWID) as n from Incidents
-     where ${incidentScope} && ${periodClause} && Incidents.injury_mechanism_id is null && Incidents.outcome != 'no_injury'`,
+     where ${incidentScope} and ${periodClause} and Incidents.injury_mechanism_id is null and Incidents.outcome != 'no_injury'`,
   )) as Array<{ Incidents: { n: string } }>;
 
   // IncidentOSHReportability.incident_id is a plain Text column, not a real Lookup/FK to
@@ -61,7 +61,7 @@ export async function computeDataQuality(params: {
   let pendingReportableCount = 0;
   if (pendingReportableIncidentIds.size > 0) {
     const pendingReportableRows = (await datastore.table("IncidentOSHReportability").getRows({
-      criteria: `IncidentOSHReportability.incident_id in (${[...pendingReportableIncidentIds].map((id) => `'${id}'`).join(",")}) && IncidentOSHReportability.reportable_status = 'pending_determination'`,
+      criteria: `IncidentOSHReportability.incident_id in (${[...pendingReportableIncidentIds].map((id) => `'${id}'`).join(",")}) and IncidentOSHReportability.reportable_status = 'pending_determination'`,
     })) as unknown as Array<{ incident_id: string }>;
     pendingReportableCount = pendingReportableRows.length;
   }
@@ -72,7 +72,7 @@ export async function computeDataQuality(params: {
   const today = new Date().toISOString().slice(0, 10);
   const overdueCapaRows = (await zcql.executeZCQLQuery(
     `select count(CAPA.ROWID) as n from CAPA
-     where ${capaScope} && CAPA.due_date < '${today}' && CAPA.status != 'closed' && CAPA.status != 'verified'`,
+     where ${capaScope} and CAPA.due_date < '${today}' and CAPA.status != 'closed' and CAPA.status != 'verified'`,
   )) as Array<{ CAPA: { n: string } }>;
 
   return [
