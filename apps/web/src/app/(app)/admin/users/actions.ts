@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { requireRole } from "@/server/permissions";
 import { writeAuditLog } from "@/server/audit-log";
 
@@ -43,7 +44,7 @@ export async function suspendUserAction(
     return { error: "User not found." };
   }
 
-  const nowIso = new Date().toISOString();
+  const nowIso = toZcqlDateTime(new Date());
   await datastore.table("Users").updateRow({
     ROWID: parsed.data.userId,
     status: "suspended",
@@ -92,7 +93,7 @@ export async function reactivateUserAction(
     return { error: "User not found." };
   }
 
-  const nowIso = new Date().toISOString();
+  const nowIso = toZcqlDateTime(new Date());
   await datastore.table("Users").updateRow({
     ROWID: parsed.data.userId,
     status: "active",

@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { requireActiveUser } from "@/server/permissions";
 
 const itemSchema = z.object({
@@ -73,7 +74,7 @@ export async function addChecklistAssessmentAction(
     maturity_score: parsed.data.maturityScore,
     evidence_reviewed: parsed.data.evidenceReviewed ?? null,
     assessor_id: ctx.userId,
-    assessed_at: new Date().toISOString(),
+    assessed_at: toZcqlDateTime(new Date()),
   });
 
   revalidatePath(`/audits/${parsed.data.auditId}/checklist`);

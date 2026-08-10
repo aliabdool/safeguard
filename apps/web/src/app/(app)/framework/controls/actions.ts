@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { isCriticalGap } from "@/server/framework/maturity";
 import { hasPropertyAccess, requireRole } from "@/server/permissions";
@@ -87,7 +88,7 @@ export async function createControlAssessmentAction(
       maturity_score: data.maturityScore,
       is_critical_gap: criticalGap,
       assessed_by: ctx.userId,
-      assessed_at: new Date().toISOString(),
+      assessed_at: toZcqlDateTime(new Date()),
       notes: data.notes ?? null,
     });
   } else {
@@ -100,7 +101,7 @@ export async function createControlAssessmentAction(
       maturity_score: data.maturityScore,
       is_critical_gap: criticalGap,
       assessed_by: ctx.userId,
-      assessed_at: new Date().toISOString(),
+      assessed_at: toZcqlDateTime(new Date()),
       notes: data.notes ?? null,
     });
   }

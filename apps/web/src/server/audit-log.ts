@@ -1,6 +1,7 @@
 import "server-only";
 
 import { catalystAdminApp } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 
 export type AuditLogEventType =
   | "login"
@@ -72,6 +73,6 @@ export async function writeAuditLog(input: WriteAuditLogInput) {
     request_id: input.requestId ?? null,
     ip_address: input.ipAddress ?? null,
     user_agent: input.userAgent ?? null,
-    occurred_at: new Date().toISOString(),
+    occurred_at: toZcqlDateTime(new Date()),
   });
 }

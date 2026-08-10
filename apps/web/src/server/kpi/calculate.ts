@@ -3,6 +3,7 @@ import "server-only";
 import { after } from "next/server";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import type { AuthContext } from "@/server/permissions";
 
 import { capaClosedOnTimeRate, capaEffectivenessRate } from "./calculations/capa";
@@ -208,7 +209,7 @@ export async function calculateKpi(
       variance_abs: variance.absolute,
       variance_pct: variance.percent,
       calculated_by: ctx.userId,
-      calculated_at: new Date().toISOString(),
+      calculated_at: toZcqlDateTime(new Date()),
     }),
   );
 

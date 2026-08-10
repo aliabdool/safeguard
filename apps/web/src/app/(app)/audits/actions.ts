@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextAuditReference } from "@/server/audits/number";
 import { hasPropertyAccess, requireRole } from "@/server/permissions";
@@ -69,7 +70,7 @@ export async function createAuditAction(
     planned_start: data.plannedStart || null,
     planned_end: data.plannedEnd || null,
     status: "planned",
-    created_at: new Date().toISOString(),
+    created_at: toZcqlDateTime(new Date()),
   });
   const auditId = String(created.ROWID);
 

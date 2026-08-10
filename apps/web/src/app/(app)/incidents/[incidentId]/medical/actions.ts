@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { requireMedicalPermission } from "@/server/permissions";
 
@@ -48,7 +49,7 @@ export async function createMedicalRecordAction(
     treatment_details: parsed.data.treatmentDetails ?? null,
     practitioner_name: parsed.data.practitionerName ?? null,
     created_by: ctx.userId,
-    created_at: new Date().toISOString(),
+    created_at: toZcqlDateTime(new Date()),
   });
 
   // Deliberately no clinical content in the audit log — only that an access/write event

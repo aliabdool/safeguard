@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextFindingNumber } from "@/server/audits/number";
 import { requireActiveUser } from "@/server/permissions";
@@ -48,7 +49,7 @@ export async function createFindingAction(
     description: data.description,
     evidence: data.evidence ?? null,
     raised_by: ctx.userId,
-    raised_at: new Date().toISOString(),
+    raised_at: toZcqlDateTime(new Date()),
     status: "open",
   });
   const findingId = String(created.ROWID);

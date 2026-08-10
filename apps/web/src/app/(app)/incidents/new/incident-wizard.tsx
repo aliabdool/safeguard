@@ -20,8 +20,11 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
+import { validatePersonInjuryConsistency } from "@/server/incidents/wizard-rules";
+
 import { clearIncidentDraft, loadIncidentDraft, saveIncidentDraft } from "./draft-storage";
 import {
+  AGE_BAND_OPTIONS,
   AREA_ISOLATED_OPTIONS,
   HAZARD_PRESENT_OPTIONS,
   IMMEDIATE_CONTROL_OPTIONS,
@@ -31,11 +34,21 @@ import {
   PERSON_TYPE_OPTIONS,
   REFERRAL_OPTIONS,
   SEVERITY_LEVELS,
+  SEX_OPTIONS,
 } from "./wizard-constants";
 import { submitIncidentReportAction, type SubmitIncidentReportInput } from "./wizard-actions";
 
 interface PersonEntry {
-  personType: "employee" | "trainee" | "contractor" | "guest" | "visitor" | "supplier" | "public" | "";
+  personType:
+    | "employee"
+    | "trainee"
+    | "contractor"
+    | "guest"
+    | "visitor"
+    | "supplier"
+    | "public"
+    | "other"
+    | "";
   fullName: string;
   employeeOrReferenceNo: string;
   details: Record<string, string>;
@@ -187,9 +200,15 @@ export function IncidentWizard({
   function toggleType(code: string) {
     setData((prev) => {
       const has = prev.typeCodes.includes(code);
-      const typeCodes = has ? prev.typeCodes.filter((c) => c !== code) : [...prev.typeCodes, code];
+      const typeCodes = has
+        ? prev.typeCodes.filter((c) => c !== code)
+        : [...prev.typeCodes, code];
       const primaryType =
-        !has && prev.primaryType === "" ? code : prev.typeCodes.includes(prev.primaryType) || has ? prev.primaryType : "";
+        !has && prev.primaryType === ""
+          ? code
+          : prev.typeCodes.includes(prev.primaryType) || has
+            ? prev.primaryType
+            : "";
       return {
         ...prev,
         typeCodes,
@@ -251,9 +270,15 @@ export function IncidentWizard({
           }
         }
         return null;
-      case 3:
+      case 3: {
         if (!data.outcome) return "Outcome is required.";
-        return null;
+        const consistency = validatePersonInjuryConsistency(
+          data.personAffected === "yes" ? "yes" : "no",
+          data.personAffected === "yes" ? data.persons.length : 0,
+          data.outcome,
+        );
+        return consistency.ok ? null : consistency.error;
+      }
       case 4:
         if (!data.actualSeverity) return "Select the actual severity.";
         if (!data.potentialSeverity) return "Select the potential severity.";
@@ -306,6 +331,7 @@ export function IncidentWizard({
       equipmentInvolved: data.equipmentInvolved || undefined,
       workStopped: data.workStopped,
       similarPrevious: data.similarPrevious,
+      personsAffected: data.personAffected === "yes" ? "yes" : "no",
       persons:
         data.personAffected === "yes"
           ? data.persons.map((p) => ({
@@ -316,7 +342,8 @@ export function IncidentWizard({
                 | "guest"
                 | "visitor"
                 | "supplier"
-                | "public",
+                | "public"
+                | "other",
               fullName: p.fullName,
               employeeOrReferenceNo: p.employeeOrReferenceNo || undefined,
               details: p.details,
@@ -353,7 +380,12 @@ export function IncidentWizard({
     } catch (err) {
       // Next.js redirect() throws a special control-flow error — rethrow it, only real errors
       // should surface here.
-      if (err && typeof err === "object" && "digest" in err && String(err.digest).startsWith("NEXT_REDIRECT")) {
+      if (
+        err &&
+        typeof err === "object" &&
+        "digest" in err &&
+        String(err.digest).startsWith("NEXT_REDIRECT")
+      ) {
         clearIncidentDraft();
         throw err;
       }
@@ -368,15 +400,17 @@ export function IncidentWizard({
     <div className="flex flex-col gap-6">
       <Alert variant="destructive">
         <AlertTriangle className="size-4" />
-        <AlertTitle>If anyone is in immediate danger, contact the emergency team first.</AlertTitle>
+        <AlertTitle>
+          If anyone is in immediate danger, contact the emergency team first.
+        </AlertTitle>
       </Alert>
 
       {restoredDraft ? (
         <Alert>
           <AlertTitle>Draft restored</AlertTitle>
           <AlertDescription>
-            We picked up where you left off. This draft is only stored in this browser and expires
-            automatically.
+            We picked up where you left off. This draft is only stored in this browser and
+            expires automatically.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -389,7 +423,10 @@ export function IncidentWizard({
           <span>{progressPct}%</span>
         </div>
         <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
-          <div className="bg-primary h-full transition-all" style={{ width: `${progressPct}%` }} />
+          <div
+            className="bg-primary h-full transition-all"
+            style={{ width: `${progressPct}%` }}
+          />
         </div>
       </div>
 
@@ -408,7 +445,9 @@ export function IncidentWizard({
               reporterRole={reporterRole}
             />
           ) : null}
-          {step === 1 ? <StepWhatHappened data={data} update={update} toggleType={toggleType} /> : null}
+          {step === 1 ? (
+            <StepWhatHappened data={data} update={update} toggleType={toggleType} />
+          ) : null}
           {step === 2 ? (
             <StepPersons
               data={data}
@@ -418,8 +457,16 @@ export function IncidentWizard({
               updatePerson={updatePerson}
             />
           ) : null}
-          {step === 3 ? <StepInjury data={data} update={update} hasPersons={data.personAffected === "yes"} /> : null}
-          {step === 4 ? <StepSeverity data={data} update={update} isHighPotential={isHighPotential} /> : null}
+          {step === 3 ? (
+            <StepInjury
+              data={data}
+              update={update}
+              hasPersons={data.personAffected === "yes"}
+            />
+          ) : null}
+          {step === 4 ? (
+            <StepSeverity data={data} update={update} isHighPotential={isHighPotential} />
+          ) : null}
           {step === 5 ? <StepImmediateControls data={data} update={update} /> : null}
           {step === 6 ? (
             <StepWitnesses
@@ -626,7 +673,10 @@ function StepWhatHappened({
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {INCIDENT_TYPE_OPTIONS.map(([code, label]) => (
             <label key={code} className="flex items-center gap-2 text-sm">
-              <Checkbox checked={data.typeCodes.includes(code)} onCheckedChange={() => toggleType(code)} />
+              <Checkbox
+                checked={data.typeCodes.includes(code)}
+                onCheckedChange={() => toggleType(code)}
+              />
               {label}
             </label>
           ))}
@@ -656,7 +706,11 @@ function StepWhatHappened({
 
       <div className="grid gap-2">
         <Label htmlFor="title">Short incident title</Label>
-        <Input id="title" value={data.title} onChange={(e) => update("title", e.target.value)} />
+        <Input
+          id="title"
+          value={data.title}
+          onChange={(e) => update("title", e.target.value)}
+        />
       </div>
 
       <div className="grid gap-2">
@@ -672,7 +726,11 @@ function StepWhatHappened({
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
           <Label htmlFor="activity">Activity being performed</Label>
-          <Input id="activity" value={data.activity} onChange={(e) => update("activity", e.target.value)} />
+          <Input
+            id="activity"
+            value={data.activity}
+            onChange={(e) => update("activity", e.target.value)}
+          />
         </div>
         <div className="grid gap-2">
           <Label htmlFor="equipmentInvolved">Equipment/material/chemical involved</Label>
@@ -709,20 +767,29 @@ function StepWhatHappened({
   );
 }
 
-function personDetailFields(person: PersonEntry, updatePerson: (patch: Partial<PersonEntry>) => void) {
+function personDetailFields(
+  person: PersonEntry,
+  updatePerson: (patch: Partial<PersonEntry>) => void,
+) {
   const setDetail = (key: string, value: string) =>
     updatePerson({ details: { ...person.details, [key]: value } });
 
-  if (person.personType === "employee") {
+  if (person.personType === "employee" || person.personType === "trainee") {
     return (
       <div className="bg-muted/40 grid grid-cols-2 gap-3 rounded-lg border p-3">
         <div className="grid gap-1">
           <Label>Department</Label>
-          <Input value={person.details.department ?? ""} onChange={(e) => setDetail("department", e.target.value)} />
+          <Input
+            value={person.details.department ?? ""}
+            onChange={(e) => setDetail("department", e.target.value)}
+          />
         </div>
         <div className="grid gap-1">
           <Label>Job title</Label>
-          <Input value={person.details.jobTitle ?? ""} onChange={(e) => setDetail("jobTitle", e.target.value)} />
+          <Input
+            value={person.details.jobTitle ?? ""}
+            onChange={(e) => setDetail("jobTitle", e.target.value)}
+          />
         </div>
       </div>
     );
@@ -744,8 +811,11 @@ function personDetailFields(person: PersonEntry, updatePerson: (patch: Partial<P
     return (
       <div className="bg-muted/40 grid grid-cols-2 gap-3 rounded-lg border p-3">
         <div className="grid gap-1">
-          <Label>Guest room</Label>
-          <Input value={person.details.roomNumber ?? ""} onChange={(e) => setDetail("roomNumber", e.target.value)} />
+          <Label>Guest room number</Label>
+          <Input
+            value={person.details.roomNumber ?? ""}
+            onChange={(e) => setDetail("roomNumber", e.target.value)}
+          />
         </div>
       </div>
     );
@@ -774,8 +844,17 @@ function StepPersons({
           value={data.personAffected}
           onValueChange={(v) => {
             update("personAffected", v as WizardData["personAffected"]);
-            if (v === "no") update("persons", []);
-            else if (v === "yes" && data.persons.length === 0) update("persons", [{ ...EMPTY_PERSON }]);
+            if (v === "no") {
+              update("persons", []);
+              // Forces the outcome back to "no injury" whenever there's no affected person —
+              // this is the exact invalid state the live browser test surfaced ("Persons
+              // affected: None" + "Outcome: First aid only", see chat) and it must not be
+              // reachable by leaving a stale injury outcome selected from a prior answer.
+              update("outcome", "no_injury");
+            } else if (v === "yes") {
+              if (data.persons.length === 0) update("persons", [{ ...EMPTY_PERSON }]);
+              if (data.outcome === "no_injury") update("outcome", "");
+            }
           }}
         >
           <SelectTrigger>
@@ -794,7 +873,12 @@ function StepPersons({
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Person {index + 1}</span>
                 {data.persons.length > 1 ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => removePerson(index)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removePerson(index)}
+                  >
                     Remove
                   </Button>
                 ) : null}
@@ -804,17 +888,21 @@ function StepPersons({
                   <Label>Person type</Label>
                   <Select
                     value={person.personType}
-                    onValueChange={(v) => updatePerson(index, { personType: v as PersonEntry["personType"] })}
+                    onValueChange={(v) =>
+                      updatePerson(index, { personType: v as PersonEntry["personType"] })
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
-                      {PERSON_TYPE_OPTIONS.filter(([v]) => v !== "none").map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
+                      {PERSON_TYPE_OPTIONS.filter(([v]) => v !== "none").map(
+                        ([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ),
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -830,8 +918,52 @@ function StepPersons({
                 <Label>Employee number / person reference</Label>
                 <Input
                   value={person.employeeOrReferenceNo}
-                  onChange={(e) => updatePerson(index, { employeeOrReferenceNo: e.target.value })}
+                  onChange={(e) =>
+                    updatePerson(index, { employeeOrReferenceNo: e.target.value })
+                  }
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1">
+                  <Label>Age band</Label>
+                  <Select
+                    value={person.details.ageBand ?? ""}
+                    onValueChange={(v) =>
+                      updatePerson(index, { details: { ...person.details, ageBand: v } })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AGE_BAND_OPTIONS.map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1">
+                  <Label>Sex</Label>
+                  <Select
+                    value={person.details.sex ?? ""}
+                    onValueChange={(v) =>
+                      updatePerson(index, { details: { ...person.details, sex: v } })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SEX_OPTIONS.map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               {personDetailFields(person, (patch) => updatePerson(index, patch))}
             </div>
@@ -860,6 +992,28 @@ function StepInjury({
   update: <K extends keyof WizardData>(key: K, value: WizardData[K]) => void;
   hasPersons: boolean;
 }) {
+  if (!hasPersons) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-2">
+          <Label>Persons affected</Label>
+          <p className="text-sm font-medium">None</p>
+        </div>
+        <div className="grid gap-2">
+          <Label>Injury outcome</Label>
+          <p className="text-sm font-medium">No injury / Not applicable</p>
+        </div>
+        <Alert>
+          <AlertDescription>
+            No affected person was recorded in the previous step, so no injury/medical outcome
+            can be selected here. Go back to &ldquo;Person(s) affected&rdquo; if that&rsquo;s
+            not correct.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-2">
@@ -878,43 +1032,19 @@ function StepInjury({
         </Select>
       </div>
 
-      {hasPersons ? (
-        <>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="injuryMechanism">Injury mechanism</Label>
-              <Select value={data.injuryMechanism} onValueChange={(v) => update("injuryMechanism", v)}>
-                <SelectTrigger id="injuryMechanism">
-                  <SelectValue placeholder="Select (if applicable)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {INJURY_MECHANISM_OPTIONS.map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="bodyPart">Body part</Label>
-              <Input id="bodyPart" value={data.bodyPart} onChange={(e) => update("bodyPart", e.target.value)} />
-            </div>
-          </div>
-
+      <>
+        <div className="grid grid-cols-2 gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="injuryType">Nature of injury</Label>
-            <Input id="injuryType" value={data.injuryType} onChange={(e) => update("injuryType", e.target.value)} />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="referral">Referral</Label>
-            <Select value={data.referral} onValueChange={(v) => update("referral", v as WizardData["referral"])}>
-              <SelectTrigger id="referral">
-                <SelectValue />
+            <Label htmlFor="injuryMechanism">Injury mechanism</Label>
+            <Select
+              value={data.injuryMechanism}
+              onValueChange={(v) => update("injuryMechanism", v)}
+            >
+              <SelectTrigger id="injuryMechanism">
+                <SelectValue placeholder="Select (if applicable)" />
               </SelectTrigger>
               <SelectContent>
-                {REFERRAL_OPTIONS.map(([value, label]) => (
+                {INJURY_MECHANISM_OPTIONS.map(([value, label]) => (
                   <SelectItem key={value} value={value}>
                     {label}
                   </SelectItem>
@@ -922,38 +1052,82 @@ function StepInjury({
               </SelectContent>
             </Select>
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="lostWorkdays">Lost workdays</Label>
-              <Input
-                id="lostWorkdays"
-                type="number"
-                min={0}
-                value={data.lostWorkdays}
-                onChange={(e) => update("lostWorkdays", Number(e.target.value) || 0)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="restrictedDutyDays">Restricted-duty days</Label>
-              <Input
-                id="restrictedDutyDays"
-                type="number"
-                min={0}
-                value={data.restrictedDutyDays}
-                onChange={(e) => update("restrictedDutyDays", Number(e.target.value) || 0)}
-              />
-            </div>
+          <div className="grid gap-2">
+            <Label htmlFor="bodyPart">Body part</Label>
+            <Input
+              id="bodyPart"
+              value={data.bodyPart}
+              onChange={(e) => update("bodyPart", e.target.value)}
+            />
           </div>
+        </div>
 
-          <Alert>
-            <AlertDescription>
-              Detailed clinical notes are not captured here — record those on the restricted
-              Medical tab after the incident is created.
-            </AlertDescription>
-          </Alert>
-        </>
-      ) : null}
+        <div className="grid gap-2">
+          <Label htmlFor="injuryType">Nature of injury</Label>
+          <Input
+            id="injuryType"
+            value={data.injuryType}
+            onChange={(e) => update("injuryType", e.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="referral">Referral</Label>
+          <Select
+            value={data.referral}
+            onValueChange={(v) => update("referral", v as WizardData["referral"])}
+          >
+            <SelectTrigger id="referral">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {REFERRAL_OPTIONS.map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="lostWorkdays">Lost workdays</Label>
+            <Input
+              id="lostWorkdays"
+              type="number"
+              min={0}
+              value={data.lostWorkdays}
+              onChange={(e) => update("lostWorkdays", Number(e.target.value) || 0)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="restrictedDutyDays">Restricted-duty days</Label>
+            <Input
+              id="restrictedDutyDays"
+              type="number"
+              min={0}
+              value={data.restrictedDutyDays}
+              onChange={(e) => update("restrictedDutyDays", Number(e.target.value) || 0)}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-1">
+          <Label>OSH reportable status</Label>
+          <p className="text-muted-foreground text-sm">
+            Pending determination — an H&amp;S officer assesses OSH reportability after the
+            incident is created.
+          </p>
+        </div>
+
+        <Alert>
+          <AlertDescription>
+            Detailed clinical notes are not captured here — record those on the restricted
+            Medical tab after the incident is created.
+          </AlertDescription>
+        </Alert>
+      </>
     </div>
   );
 }
@@ -990,7 +1164,8 @@ function StepSeverity({
               <div key={potentialRow.level} className="contents">
                 {SEVERITY_LEVELS.map((actualCol) => {
                   const isCell =
-                    potentialRow.level === data.potentialSeverity && actualCol.level === data.actualSeverity;
+                    potentialRow.level === data.potentialSeverity &&
+                    actualCol.level === data.actualSeverity;
                   const severityScore = potentialRow.level + actualCol.level;
                   const bg =
                     severityScore >= 8
@@ -1011,8 +1186,8 @@ function StepSeverity({
             ))}
           </div>
           <p className="text-muted-foreground text-xs">
-            Rows = potential severity (P1 top → P5 bottom), columns = actual severity (S1 left → S5
-            right).
+            Rows = potential severity (P1 top → P5 bottom), columns = actual severity (S1 left
+            → S5 right).
           </p>
         </div>
       ) : null}
@@ -1022,8 +1197,8 @@ function StepSeverity({
           <AlertTriangle className="size-4" />
           <AlertTitle>High-potential classification (system-calculated)</AlertTitle>
           <AlertDescription>
-            Actual or potential severity is 4 or higher, so this incident is automatically flagged
-            high-potential. This cannot be manually overridden.
+            Actual or potential severity is 4 or higher, so this incident is automatically
+            flagged high-potential. This cannot be manually overridden.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -1090,7 +1265,10 @@ function StepImmediateControls({
             <Checkbox
               checked={data.immediateControls[key] ?? false}
               onCheckedChange={(checked) =>
-                update("immediateControls", { ...data.immediateControls, [key]: checked === true })
+                update("immediateControls", {
+                  ...data.immediateControls,
+                  [key]: checked === true,
+                })
               }
             />
             {label}
@@ -1136,18 +1314,29 @@ function StepWitnesses({
         <div key={index} className="flex flex-col gap-3 rounded-lg border p-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Witness {index + 1}</span>
-            <Button type="button" variant="ghost" size="sm" onClick={() => removeWitness(index)}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => removeWitness(index)}
+            >
               Remove
             </Button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1">
               <Label>Full name</Label>
-              <Input value={witness.fullName} onChange={(e) => updateWitness(index, { fullName: e.target.value })} />
+              <Input
+                value={witness.fullName}
+                onChange={(e) => updateWitness(index, { fullName: e.target.value })}
+              />
             </div>
             <div className="grid gap-1">
               <Label>Contact / reference</Label>
-              <Input value={witness.contact} onChange={(e) => updateWitness(index, { contact: e.target.value })} />
+              <Input
+                value={witness.contact}
+                onChange={(e) => updateWitness(index, { contact: e.target.value })}
+              />
             </div>
           </div>
           <div className="grid gap-1">
@@ -1217,8 +1406,17 @@ function StepReview({
         <dt className="text-muted-foreground">Title</dt>
         <dd>{data.title}</dd>
         <dt className="text-muted-foreground">Persons affected</dt>
-        <dd>{data.persons.length === 0 ? "None" : data.persons.map((p) => p.fullName).join(", ")}</dd>
-        <dt className="text-muted-foreground">Outcome</dt>
+        <dd>
+          {data.personAffected === "yes"
+            ? data.persons
+                .map(
+                  (p) =>
+                    `${p.fullName} (${PERSON_TYPE_OPTIONS.find(([c]) => c === p.personType)?.[1] ?? p.personType})`,
+                )
+                .join(", ")
+            : "None"}
+        </dd>
+        <dt className="text-muted-foreground">Injury outcome</dt>
         <dd>{OUTCOME_OPTIONS.find(([c]) => c === data.outcome)?.[1] ?? data.outcome}</dd>
         <dt className="text-muted-foreground">Severity</dt>
         <dd>

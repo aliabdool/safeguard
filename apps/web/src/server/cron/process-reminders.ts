@@ -59,7 +59,7 @@ export async function processDueReminders(
       // forever; nothing left to notify.
       await datastore.table("ScheduledReminders").updateRow({
         ROWID: reminder.ROWID,
-        sent_at: now.toISOString(),
+        sent_at: toZcqlDateTime(now),
       });
       continue;
     }
@@ -77,12 +77,12 @@ export async function processDueReminders(
       entity_type: reminder.related_entity_type,
       entity_id: reminder.related_entity_id,
       severity: "info",
-      created_at: now.toISOString(),
+      created_at: toZcqlDateTime(now),
     });
 
     await datastore.table("ScheduledReminders").updateRow({
       ROWID: reminder.ROWID,
-      sent_at: now.toISOString(),
+      sent_at: toZcqlDateTime(now),
     });
     processed += 1;
   }

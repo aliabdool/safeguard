@@ -25,7 +25,37 @@ export const PERSON_TYPE_OPTIONS = [
   ["visitor", "Visitor"],
   ["supplier", "Supplier"],
   ["public", "Member of the public"],
+  ["other", "Other / third party"],
   ["none", "No person affected"],
+] as const;
+
+export const AGE_BAND_OPTIONS = [
+  ["under_18", "Under 18"],
+  ["18_24", "18–24"],
+  ["25_34", "25–34"],
+  ["35_44", "35–44"],
+  ["45_54", "45–54"],
+  ["55_64", "55–64"],
+  ["65_plus", "65+"],
+  ["not_disclosed", "Not disclosed"],
+] as const;
+
+export const SEX_OPTIONS = [
+  ["female", "Female"],
+  ["male", "Male"],
+  ["other", "Other"],
+  ["not_disclosed", "Not disclosed"],
+] as const;
+
+/** Outcomes that can only be recorded when at least one person is affected — see chat. */
+export const INJURY_ONLY_OUTCOMES = [
+  "first_aid",
+  "medical_treatment",
+  "restricted_work",
+  "lost_time_injury",
+  "hospitalisation",
+  "permanent_impairment",
+  "fatality",
 ] as const;
 
 export const INJURY_MECHANISM_OPTIONS = [
@@ -84,7 +114,11 @@ export const SEVERITY_LEVELS = [
   { level: 2, label: "Minor", description: "First aid or minor damage; routine handling." },
   { level: 3, label: "Moderate", description: "Medical treatment or reportable damage." },
   { level: 4, label: "Major", description: "Lost time, hospitalisation, or major damage." },
-  { level: 5, label: "Critical", description: "Fatality, permanent impairment, or catastrophic loss." },
+  {
+    level: 5,
+    label: "Critical",
+    description: "Fatality, permanent impairment, or catastrophic loss.",
+  },
 ] as const;
 
 export const HAZARD_PRESENT_OPTIONS = [

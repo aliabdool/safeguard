@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 
 import { catalystAppFromHeaders, type CatalystApp, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { hasPropertyAccess, requireRole } from "@/server/permissions";
 import { recentFinancialYears } from "@/server/kpi/period";
@@ -41,7 +42,7 @@ async function recordReportExport(
     exported_by: exportedBy,
     filters_json: JSON.stringify(filters),
     record_count: recordCount,
-    exported_at: new Date().toISOString(),
+    exported_at: toZcqlDateTime(new Date()),
   });
 }
 

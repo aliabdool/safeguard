@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextCapaActionNumber } from "@/server/capa/number";
 import { hasPropertyAccess, requireActiveUser, requireRole } from "@/server/permissions";
@@ -122,8 +123,8 @@ export async function createCapaAction(
         cost: data.cost != null ? data.cost : null,
         required_evidence: data.requiredEvidence ?? null,
         created_by: ctx.userId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: toZcqlDateTime(new Date()),
+        updated_at: toZcqlDateTime(new Date()),
       });
       capaId = String(created.ROWID);
     } catch (err) {
@@ -212,13 +213,13 @@ export async function verifyCapaAction(
     // uses for its unrelated (and not-yet-live) Catalyst Function workflow.
     outcome: parsed.data.outcome,
     notes: parsed.data.comment ?? null,
-    verified_at: new Date().toISOString(),
+    verified_at: toZcqlDateTime(new Date()),
   });
 
   await datastore.table("CAPA").updateRow({
     ROWID: parsed.data.capaId,
     status: parsed.data.outcome === "effective" ? "verified" : "in_progress",
-    updated_at: new Date().toISOString(),
+    updated_at: toZcqlDateTime(new Date()),
   });
 
   await writeAuditLog({
@@ -270,8 +271,8 @@ export async function closeCapaAction(
     ROWID: parsed.data.capaId,
     status: "closed",
     final_approved_by: ctx.userId,
-    final_approved_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    final_approved_at: toZcqlDateTime(new Date()),
+    updated_at: toZcqlDateTime(new Date()),
   });
 
   await writeAuditLog({

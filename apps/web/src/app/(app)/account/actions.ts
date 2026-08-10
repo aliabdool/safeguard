@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { requireActiveUser } from "@/server/permissions";
 
 // Was z.string().uuid() pre-migration — a Catalyst ROWID is not a Postgres UUID.
@@ -39,7 +40,7 @@ export async function markNotificationReadAction(
 
   await datastore.table("Notifications").updateRow({
     ROWID: parsed.data.notificationId,
-    read_at: new Date().toISOString(),
+    read_at: toZcqlDateTime(new Date()),
   });
 
   revalidatePath("/account");

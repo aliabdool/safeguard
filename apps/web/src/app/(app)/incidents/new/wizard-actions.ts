@@ -5,11 +5,15 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { financialYearFor } from "@/server/kpi/period";
 import { writeAuditLog } from "@/server/audit-log";
 import { allocateIncidentNumber } from "@/server/incidents/number";
-import { personDetailsSchema } from "@/server/incidents/person-details";
-import { computeHighPotential, validateTypeSelections } from "@/server/incidents/wizard-rules";
+import {
+  computeHighPotential,
+  validatePersonInjuryConsistency,
+  validateTypeSelections,
+} from "@/server/incidents/wizard-rules";
 import { hasDepartmentAccess, hasPropertyAccess, requireRole } from "@/server/permissions";
 
 const REPORTER_ROLES = [
@@ -22,9 +26,27 @@ const REPORTER_ROLES = [
 ] as const;
 
 const personEntrySchema = z.object({
-  personType: z.enum(["employee", "trainee", "contractor", "guest", "visitor", "supplier", "public"]),
+  personType: z.enum([
+    "employee",
+    "trainee",
+    "contractor",
+    "guest",
+    "visitor",
+    "supplier",
+    "public",
+    "other",
+  ]),
   fullName: z.string().min(1, "Full name is required for every affected person."),
   employeeOrReferenceNo: z.string().optional(),
+  // Type-specific capture fields (department, age band, sex, guest room, contractor company,
+  // etc.) — deliberately NOT run through server/incidents/person-details.ts's discriminated-union
+  // schema here. That schema requires fields this report-time wizard never collects (e.g.
+  // employeeNumber, jobTitle, hrConfirmed for "employee"), which meant simply typing a department
+  // name into the wizard's employee detail fields made every submission fail server-side
+  // validation with "Please complete the employee details section" — confirmed live (see chat).
+  // That stricter schema is for a later, more rigorous investigation-stage capture, not this
+  // initial report; the wizard stores whatever type-relevant fields it actually collected as
+  // opaque JSON instead of gating on a schema built for a different screen.
   details: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -60,6 +82,7 @@ export const submitIncidentReportSchema = z.object({
   similarPrevious: z.boolean(),
 
   // Step 3
+  personsAffected: z.enum(["yes", "no"]),
   persons: z.array(personEntrySchema),
 
   // Step 4
@@ -129,37 +152,27 @@ export async function submitIncidentReportAction(
     return { error: typeResult.error };
   }
 
-  // Validate every person's type-specific details against the same schema the single-person form
-  // already used, per person — never partially accepted.
-  const validatedPersons: Array<{
-    personType: string;
-    fullName: string;
-    employeeOrReferenceNo: string | null;
-    detailsJson: string | null;
-  }> = [];
-  for (const person of data.persons) {
-    let details: unknown = null;
-    if (person.details && Object.keys(person.details).length > 0) {
-      const detailsResult = personDetailsSchema.safeParse({
-        ...person.details,
-        personType: person.personType,
-      });
-      if (!detailsResult.success) {
-        return {
-          error:
-            `Please complete the ${person.personType} details section — ` +
-            (detailsResult.error.issues[0]?.message ?? "some fields are missing."),
-        };
-      }
-      details = detailsResult.data;
-    }
-    validatedPersons.push({
-      personType: person.personType,
-      fullName: person.fullName,
-      employeeOrReferenceNo: person.employeeOrReferenceNo || null,
-      detailsJson: details != null ? JSON.stringify(details) : null,
-    });
+  // The exact invalid state the live browser test surfaced: "Persons affected: None" paired with
+  // an injury outcome like "First aid only" (see chat) — enforced here independently of the
+  // client-side wizard step validation, which a direct action call could otherwise bypass.
+  const consistency = validatePersonInjuryConsistency(
+    data.personsAffected,
+    data.persons.length,
+    data.outcome,
+  );
+  if (!consistency.ok) {
+    return { error: consistency.error };
   }
+
+  const validatedPersons = data.persons.map((person) => ({
+    personType: person.personType,
+    fullName: person.fullName,
+    employeeOrReferenceNo: person.employeeOrReferenceNo || null,
+    detailsJson:
+      person.details && Object.keys(person.details).length > 0
+        ? JSON.stringify(person.details)
+        : null,
+  }));
 
   const catalystApp = catalystAppFromHeaders(await headers());
   const datastore = catalystApp.datastore();
@@ -196,7 +209,9 @@ export async function submitIncidentReportAction(
   const immediateActionsText = Object.entries(data.immediateControls)
     .filter(([, checked]) => checked)
     .map(([key]) => key)
-    .concat(data.additionalAssistance ? [`Additional assistance: ${data.additionalAssistance}`] : [])
+    .concat(
+      data.additionalAssistance ? [`Additional assistance: ${data.additionalAssistance}`] : [],
+    )
     .join("; ");
 
   let incidentId: string;
@@ -217,9 +232,10 @@ export async function submitIncidentReportAction(
           property_id: data.propertyId,
           department_id: data.departmentId,
           location_detail: data.locationDetail,
-          occurred_at: occurredAt.toISOString(),
+          occurred_at: toZcqlDateTime(occurredAt),
           reported_by: ctx.userId,
-          person_event_type: data.persons[0]?.personType ?? "none",
+          person_event_type:
+            data.personsAffected === "yes" ? data.persons[0]!.personType : "none",
           incident_type: typeResult.primaryCode,
           injury_mechanism_id: injuryMechanismId,
           injury_type: data.injuryType || null,
@@ -232,8 +248,8 @@ export async function submitIncidentReportAction(
           lost_workdays: data.lostWorkdays,
           restricted_duty_days: data.restrictedDutyDays,
           immediate_actions: immediateActionsText || null,
-          created_at: createdAt.toISOString(),
-          updated_at: createdAt.toISOString(),
+          created_at: toZcqlDateTime(createdAt),
+          updated_at: toZcqlDateTime(createdAt),
         });
         return String(created.ROWID);
       },

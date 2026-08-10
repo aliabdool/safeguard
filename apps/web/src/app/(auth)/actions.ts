@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { catalystAdminApp, catalystAppFromHeaders } from "@/lib/catalyst/app";
 import { getCatalystLogoutUrl } from "@/lib/catalyst/env";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { isRateLimited } from "@/server/security/rate-limit";
 
@@ -94,8 +95,8 @@ export async function signUpAction(
     full_name: parsed.data.fullName,
     email: parsed.data.email,
     status: "pending_approval",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    created_at: toZcqlDateTime(new Date()),
+    updated_at: toZcqlDateTime(new Date()),
   });
   const userId = userRow.ROWID as string;
 
@@ -104,7 +105,7 @@ export async function signUpAction(
     requested_role_id: parsed.data.requestedRoleId || null,
     requested_property_id: parsed.data.requestedPropertyId || null,
     justification: parsed.data.justification ?? null,
-    created_at: new Date().toISOString(),
+    created_at: toZcqlDateTime(new Date()),
   });
 
   await writeAuditLog({

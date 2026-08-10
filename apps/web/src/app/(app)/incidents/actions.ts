@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { hasPropertyAccess, requireActiveUser, requireRole } from "@/server/permissions";
 
@@ -78,7 +79,7 @@ export async function recordIncidentNotificationAction(
     notified_party: parsed.data.notifiedParty,
     method: parsed.data.method ?? null,
     notified_by: ctx.userId,
-    notified_at: new Date().toISOString(),
+    notified_at: toZcqlDateTime(new Date()),
   });
 
   revalidatePath(`/incidents/${parsed.data.incidentId}`);
@@ -153,7 +154,7 @@ export async function advanceIncidentStatusAction(
   await datastore.table("Incidents").updateRow({
     ROWID: incidentId,
     status: targetStatus,
-    updated_at: new Date().toISOString(),
+    updated_at: toZcqlDateTime(new Date()),
   });
 
   await writeAuditLog({

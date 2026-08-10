@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { hasPropertyAccess, requireActiveUser, requireRole } from "@/server/permissions";
 
@@ -58,7 +59,7 @@ export async function assignInvestigatorAction(
       incident_id: parsed.data.incidentId,
       investigator_id: parsed.data.investigatorId,
       status: "assigned",
-      assigned_at: new Date().toISOString(),
+      assigned_at: toZcqlDateTime(new Date()),
     });
   }
 
@@ -233,7 +234,7 @@ export async function completeInvestigationAction(
     ROWID: parsed.data.investigationId,
     event_reconstruction: parsed.data.eventReconstruction,
     status: "completed",
-    completed_at: new Date().toISOString(),
+    completed_at: toZcqlDateTime(new Date()),
   });
 
   await writeAuditLog({
@@ -278,7 +279,7 @@ export async function approveInvestigationAction(
     approver_id: ctx.userId,
     decision: parsed.data.decision,
     comment: parsed.data.comment ?? null,
-    decided_at: new Date().toISOString(),
+    decided_at: toZcqlDateTime(new Date()),
   });
 
   await datastore.table("IncidentInvestigation").updateRow({

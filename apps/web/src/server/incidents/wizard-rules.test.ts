@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeHighPotential,
   isValidWitnessOwner,
+  validatePersonInjuryConsistency,
   validateTypeSelections,
 } from "./wizard-rules";
 
@@ -59,6 +60,42 @@ describe("validateTypeSelections", () => {
       primaryCode: "injury",
       codes: ["injury", "near_miss", "fire_smoke"],
     });
+  });
+});
+
+describe("validatePersonInjuryConsistency", () => {
+  it("rejects the exact reported defect: no persons but an injury outcome", () => {
+    const result = validatePersonInjuryConsistency("no", 0, "first_aid");
+    expect(result.ok).toBe(false);
+  });
+  it("rejects every injury-implying outcome without a person", () => {
+    for (const outcome of [
+      "first_aid",
+      "medical_treatment",
+      "restricted_work",
+      "lost_time_injury",
+      "hospitalisation",
+      "permanent_impairment",
+      "fatality",
+    ]) {
+      expect(validatePersonInjuryConsistency("no", 0, outcome).ok).toBe(false);
+    }
+  });
+  it("accepts no persons with no_injury outcome", () => {
+    expect(validatePersonInjuryConsistency("no", 0, "no_injury")).toEqual({ ok: true });
+  });
+  it("rejects persons recorded when 'no person affected' is selected", () => {
+    const result = validatePersonInjuryConsistency("no", 1, "no_injury");
+    expect(result.ok).toBe(false);
+  });
+  it("rejects zero persons when 'yes' is selected", () => {
+    const result = validatePersonInjuryConsistency("yes", 0, "no_injury");
+    expect(result.ok).toBe(false);
+  });
+  it("accepts a person affected with any outcome, including no_injury", () => {
+    expect(validatePersonInjuryConsistency("yes", 1, "no_injury")).toEqual({ ok: true });
+    expect(validatePersonInjuryConsistency("yes", 1, "first_aid")).toEqual({ ok: true });
+    expect(validatePersonInjuryConsistency("yes", 2, "hospitalisation")).toEqual({ ok: true });
   });
 });
 

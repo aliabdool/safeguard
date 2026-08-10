@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { writeAuditLog } from "@/server/audit-log";
 import { nextDocumentNumber } from "@/server/documents/number";
 import { requireActiveUser, requireRole } from "@/server/permissions";
@@ -58,8 +59,8 @@ export async function createDocumentAction(
     confidentiality_level: data.confidentialityLevel,
     retention_period_months: data.retentionPeriodMonths ?? null,
     status: "draft",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    created_at: toZcqlDateTime(new Date()),
+    updated_at: toZcqlDateTime(new Date()),
   });
   const documentId = String(created.ROWID);
 
@@ -190,7 +191,7 @@ export async function approveDocumentVersionAction(
     ROWID: parsed.data.documentId,
     status: "approved",
     current_version_id: parsed.data.versionId,
-    updated_at: new Date().toISOString(),
+    updated_at: toZcqlDateTime(new Date()),
   });
 
   // The approval DECISION as its own record (DocumentApprovals) — mirrors CAPAVerification /
@@ -200,7 +201,7 @@ export async function approveDocumentVersionAction(
     approver_id: ctx.userId,
     outcome: "approved",
     notes: parsed.data.comment ?? null,
-    decided_at: new Date().toISOString(),
+    decided_at: toZcqlDateTime(new Date()),
   });
 
   await writeAuditLog({
@@ -261,7 +262,7 @@ export async function addEvidenceLinkAction(
     page_or_section: parsed.data.pageOrSection ?? null,
     reporting_period: parsed.data.reportingPeriod ?? null,
     linked_by: ctx.userId,
-    linked_at: new Date().toISOString(),
+    linked_at: toZcqlDateTime(new Date()),
   });
 
   await writeAuditLog({

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { requireRole } from "@/server/permissions";
 import { writeAuditLog } from "@/server/audit-log";
 
@@ -45,7 +46,7 @@ export async function approveRegistrationAction(
 
   const catalystApp = catalystAppFromHeaders(await headers());
   const datastore = catalystApp.datastore();
-  const nowIso = new Date().toISOString();
+  const nowIso = toZcqlDateTime(new Date());
 
   // Data Store has no multi-table transaction primitive, so these writes are sequenced, not
   // atomic (see apps/catalyst/data-store-schema/README.md) — a partial failure needs manual
@@ -148,7 +149,7 @@ export async function rejectRegistrationAction(
 
   const catalystApp = catalystAppFromHeaders(await headers());
   const datastore = catalystApp.datastore();
-  const nowIso = new Date().toISOString();
+  const nowIso = toZcqlDateTime(new Date());
 
   await datastore.table("Users").updateRow({
     ROWID: data.userId,
