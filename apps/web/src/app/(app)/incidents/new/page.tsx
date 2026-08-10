@@ -4,7 +4,7 @@ import { catalystAppFromHeaders } from "@/lib/catalyst/app";
 import { listDepartments, listProperties } from "@/server/identity/catalyst-identity";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
-import { IncidentForm } from "./incident-form";
+import { IncidentWizard } from "./incident-wizard";
 
 export default async function NewIncidentPage() {
   const ctx = await getAuthContext();
@@ -18,7 +18,7 @@ export default async function NewIncidentPage() {
   const availableProperties = allProperties.filter((p) => ctx && hasPropertyAccess(ctx, p.id));
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className="flex max-w-3xl flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Report an incident</h1>
         <p className="text-muted-foreground text-sm">
@@ -26,7 +26,12 @@ export default async function NewIncidentPage() {
           Medical tab on the incident page (requires medical-data permission).
         </p>
       </div>
-      <IncidentForm properties={availableProperties} departments={allDepartments} />
+      <IncidentWizard
+        properties={availableProperties}
+        departments={allDepartments}
+        reporterName={ctx?.fullName ?? "Unknown"}
+        reporterRole={ctx?.roleCodes.join(", ") ?? ""}
+      />
     </div>
   );
 }

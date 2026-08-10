@@ -17,6 +17,7 @@ import { usePathname } from "next/navigation";
 import type { ComponentType } from "react";
 
 import { signOutAction } from "@/app/(auth)/actions";
+import { clearIncidentDraft } from "@/app/(app)/incidents/new/draft-storage";
 import { cn } from "@/lib/utils";
 import type { RoleCode } from "@/server/permissions";
 
@@ -145,7 +146,7 @@ export function AppNav({ roleCodes, fullName }: { roleCodes: RoleCode[]; fullNam
             </span>
           </span>
         </Link>
-        <form action={signOutAction}>
+        <form action={signOutAction} onSubmit={() => clearIncidentDraft()}>
           <button
             type="submit"
             className="bg-sidebar-accent flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-[12px] text-white hover:bg-white/15"
