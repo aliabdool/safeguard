@@ -7,7 +7,7 @@ import { allocateIncidentNumber } from "./number";
 /**
  * A faithful-enough fake of the two calls allocateIncidentNumber makes: the IncidentSequence
  * advisory hint (a single row per sequence_name) and a ZCQL MAX(incident_sequence) query scoped
- * by business_unit_code + reference_year, parsed out of the query text so cross-scope independence
+ * by incident_prefix + reference_year, parsed out of the query text so cross-scope independence
  * is actually exercised rather than assumed.
  */
 function createMockCatalystApp(committedByScope: Record<string, number[]> = {}) {
@@ -16,8 +16,8 @@ function createMockCatalystApp(committedByScope: Record<string, number[]> = {}) 
   );
   const hints = new Map<string, number>();
 
-  function scopeKey(businessUnitCode: string, referenceYear: string): string {
-    return `${businessUnitCode}-${referenceYear}`;
+  function scopeKey(incidentPrefix: string, referenceYear: string): string {
+    return `${incidentPrefix}-${referenceYear}`;
   }
 
   const app = {
@@ -47,20 +47,22 @@ function createMockCatalystApp(committedByScope: Record<string, number[]> = {}) 
     }),
     zcql: () => ({
       executeZCQLQuery: async (query: string) => {
-        const codeMatch = query.match(/business_unit_code = '([^']+)'/);
+        const codeMatch = query.match(/incident_prefix = '([^']+)'/);
         const yearMatch = query.match(/reference_year = '([^']+)'/);
         const key = `${codeMatch?.[1]}-${yearMatch?.[1]}`;
         const set = committed.get(key);
         const max = set && set.size > 0 ? Math.max(...set) : null;
-        return [{ Incidents: { maxseq: max === null ? null : String(max) } }];
+        // Real ZCQL keys aggregate results by the column name inside the function, not the SQL
+        // alias — confirmed live (see chat) — so the mock mirrors that shape deliberately.
+        return [{ Incidents: { incident_sequence: max === null ? null : String(max) } }];
       },
     }),
   } as unknown as CatalystApp;
 
   return {
     app,
-    commit: (businessUnitCode: string, referenceYear: string, sequence: number) => {
-      const key = scopeKey(businessUnitCode, referenceYear);
+    commit: (incidentPrefix: string, referenceYear: string, sequence: number) => {
+      const key = scopeKey(incidentPrefix, referenceYear);
       if (!committed.has(key)) committed.set(key, new Set());
       committed.get(key)!.add(sequence);
     },
@@ -71,7 +73,7 @@ describe("allocateIncidentNumber", () => {
   it("allocates 00000001 for a business unit + year with no prior incidents", async () => {
     const { app, commit } = createMockCatalystApp();
     const insertIncident = vi.fn(async (allocation) => {
-      commit(allocation.businessUnitCode, allocation.referenceYear, allocation.incidentSequence);
+      commit(allocation.incidentPrefix, allocation.referenceYear, allocation.incidentSequence);
       return "incident-1";
     });
 
@@ -81,7 +83,7 @@ describe("allocateIncidentNumber", () => {
     expect(insertIncident).toHaveBeenCalledTimes(1);
     expect(insertIncident.mock.calls[0]![0]).toEqual({
       incidentNumber: "LP-2026-00000001",
-      businessUnitCode: "LP",
+      incidentPrefix: "LP",
       referenceYear: "2026",
       incidentSequence: 1,
     });
@@ -90,7 +92,7 @@ describe("allocateIncidentNumber", () => {
   it("continues from the highest already-committed sequence, not the count of rows", async () => {
     const { app, commit } = createMockCatalystApp({ "LP-2026": [1, 2, 3] });
     const insertIncident = vi.fn(async (allocation) => {
-      commit(allocation.businessUnitCode, allocation.referenceYear, allocation.incidentSequence);
+      commit(allocation.incidentPrefix, allocation.referenceYear, allocation.incidentSequence);
       return "incident-4";
     });
 
@@ -106,7 +108,7 @@ describe("allocateIncidentNumber", () => {
       "LP-2027": [],
     });
     const insertIncident = vi.fn(async (allocation) => {
-      commit(allocation.businessUnitCode, allocation.referenceYear, allocation.incidentSequence);
+      commit(allocation.incidentPrefix, allocation.referenceYear, allocation.incidentSequence);
       return `incident-${allocation.incidentNumber}`;
     });
 
@@ -136,7 +138,7 @@ describe("allocateIncidentNumber", () => {
         commit("LP", "2026", 2);
         throw new Error("ZCQL query failed: unique constraint violation on incident_sequence");
       }
-      commit(allocation.businessUnitCode, allocation.referenceYear, allocation.incidentSequence);
+      commit(allocation.incidentPrefix, allocation.referenceYear, allocation.incidentSequence);
       return `incident-${allocation.incidentSequence}`;
     });
 
@@ -162,7 +164,7 @@ describe("allocateIncidentNumber", () => {
   it("zero-pads the sequence to 8 digits", async () => {
     const { app, commit } = createMockCatalystApp({ "AM-2026": [99] });
     const insertIncident = vi.fn(async (allocation) => {
-      commit(allocation.businessUnitCode, allocation.referenceYear, allocation.incidentSequence);
+      commit(allocation.incidentPrefix, allocation.referenceYear, allocation.incidentSequence);
       return "incident-100";
     });
 

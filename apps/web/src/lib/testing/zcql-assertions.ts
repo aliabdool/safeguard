@@ -16,6 +16,10 @@ export const BANNED_PATTERNS: BannedPattern[] = [
   { name: 'JavaScript == (use "=")', re: /[^=!<>]==(?!=)/ },
   { name: "bare literal tautology 1=1 (reference a real column instead)", re: /(?<![\w=!<>])1\s*=\s*1\b/ },
   { name: "bare literal tautology 1=0 (reference a real column instead)", re: /(?<![\w=!<>])1\s*=\s*0\b/ },
+  {
+    name: 'aggregate function with an "as" alias — ZCQL never honors it (confirmed live: the result is always keyed by the column name INSIDE the function, e.g. count(Incidents.ROWID) as n comes back as { Incidents: { ROWID: <count> } }, never { n: <count> })',
+    re: /\b(count|sum|avg|max|min)\s*\([^)]*\)\s+as\s+\w+/i,
+  },
 ];
 
 export function findBannedPatterns(text: string): string[] {

@@ -98,10 +98,13 @@ export interface SubmitIncidentReportResult {
 
 /**
  * Full incident-wizard submission (Phase 1 + 2 of the SafeGuard product upgrade brief — see chat).
- * Every write below happens against tables/columns that must exist in the deployed Catalyst schema
- * first (business_unit_code, incident_sequence, reference_year, financial_year on Incidents;
- * IncidentSequence; IncidentTypeSelections; IncidentWitnesses.incident_id) — this action will fail
- * at runtime until that migration is applied. See the migration spec in chat for exact DDL.
+ * Numbering is per-property: Properties.incident_prefix (e.g. "LP") is a short public-numbering
+ * code, deliberately separate from Properties.code (the legacy/system code other logic may
+ * depend on) — confirmed live that no other application code reads Properties.code, so it was
+ * left untouched. The Catalyst schema migration (Properties.incident_prefix; Incidents.
+ * incident_sequence/reference_year/financial_year/incident_prefix; IncidentSequence;
+ * IncidentTypeSelections; IncidentWitnesses.incident_id) has been applied to the live Development
+ * environment — see chat for the exact rows/columns/tables changed.
  */
 export async function submitIncidentReportAction(
   input: SubmitIncidentReportInput,
@@ -164,10 +167,15 @@ export async function submitIncidentReportAction(
   const propertyRows = (await datastore.table("Properties").getRows({
     criteria: `Properties.ROWID = '${data.propertyId}'`,
     maxRows: 1,
-  })) as Array<CatalystRow & { code: string }>;
+  })) as Array<CatalystRow & { code: string; incident_prefix: string | null }>;
   const property = propertyRows[0];
   if (!property) {
     return { error: "Unknown property." };
+  }
+  if (!property.incident_prefix) {
+    return {
+      error: `${property.code} has no incident_prefix configured — an administrator must set one before incidents can be reported for this property.`,
+    };
   }
 
   let injuryMechanismId: string | null = null;
@@ -196,7 +204,7 @@ export async function submitIncidentReportAction(
   try {
     incidentId = await allocateIncidentNumber(
       catalystApp,
-      property.code,
+      property.incident_prefix,
       referenceYear,
       async (allocation) => {
         allocatedIncidentNumber = allocation.incidentNumber;
@@ -204,7 +212,7 @@ export async function submitIncidentReportAction(
           incident_number: allocation.incidentNumber,
           incident_sequence: allocation.incidentSequence,
           reference_year: allocation.referenceYear,
-          business_unit_code: allocation.businessUnitCode,
+          incident_prefix: allocation.incidentPrefix,
           financial_year: fyLabel,
           property_id: data.propertyId,
           department_id: data.departmentId,

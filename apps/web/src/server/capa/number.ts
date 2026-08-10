@@ -15,12 +15,17 @@ export async function nextCapaActionNumber(catalystApp: CatalystApp): Promise<st
   const yearStart = toZcqlDateTime(new Date(Date.UTC(year, 0, 1)));
   const yearEnd = toZcqlDateTime(new Date(Date.UTC(year + 1, 0, 1)));
 
+  // No "as n" alias: confirmed live against the deployed project (see chat) that ZCQL aggregate
+  // results are keyed by the column name INSIDE the function, not the SQL alias —
+  // `count(CAPA.ROWID) as n` actually returns `{ CAPA: { ROWID: <count> } }`, not `{ n: <count> }`.
+  // Reading `.CAPA.n` silently returned undefined -> 0 every time, so this always allocated
+  // sequence 1 regardless of how many CAPA actions already existed that year.
   const rows = (await catalystApp
     .zcql()
     .executeZCQLQuery(
-      `select count(CAPA.ROWID) as n from CAPA where CAPA.created_at >= '${yearStart}' and CAPA.created_at <= '${yearEnd}'`,
-    )) as Array<{ CAPA: { n: string } }>;
+      `select count(CAPA.ROWID) from CAPA where CAPA.created_at >= '${yearStart}' and CAPA.created_at <= '${yearEnd}'`,
+    )) as Array<{ CAPA: { ROWID: string } }>;
 
-  const seq = Number(rows[0]?.CAPA.n ?? "0") + 1;
+  const seq = Number(rows[0]?.CAPA.ROWID ?? "0") + 1;
   return `CAPA-${year}-${String(seq).padStart(4, "0")}`;
 }

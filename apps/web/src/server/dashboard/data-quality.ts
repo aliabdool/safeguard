@@ -49,10 +49,12 @@ export async function computeDataQuality(params: {
     missingRootCause = needingInvestigation.filter((i) => !rootCauseIncidentIds.has(i.ROWID)).length;
   }
 
+  // No "as n" alias: confirmed live (see chat) that ZCQL aggregate results are keyed by the
+  // column name INSIDE the function, not the SQL alias.
   const missingInjuryMechanismRows = (await zcql.executeZCQLQuery(
-    `select count(Incidents.ROWID) as n from Incidents
+    `select count(Incidents.ROWID) from Incidents
      where ${incidentScope} and ${periodClause} and Incidents.injury_mechanism_id is null and Incidents.outcome != 'no_injury'`,
-  )) as Array<{ Incidents: { n: string } }>;
+  )) as Array<{ Incidents: { ROWID: string } }>;
 
   // IncidentOSHReportability.incident_id is a plain Text column, not a real Lookup/FK to
   // Incidents (same class of bug as the UserRoles/Roles join fixed in
@@ -72,20 +74,20 @@ export async function computeDataQuality(params: {
     : propertyScopeClause("CAPA.property_id", ctx);
   const today = new Date().toISOString().slice(0, 10);
   const overdueCapaRows = (await zcql.executeZCQLQuery(
-    `select count(CAPA.ROWID) as n from CAPA
+    `select count(CAPA.ROWID) from CAPA
      where ${capaScope} and CAPA.due_date < '${today}' and CAPA.status != 'closed' and CAPA.status != 'verified'`,
-  )) as Array<{ CAPA: { n: string } }>;
+  )) as Array<{ CAPA: { ROWID: string } }>;
 
   return [
     { label: "Missing root cause (investigated incidents)", count: missingRootCause },
     {
       label: "Missing injury mechanism (injury outcomes)",
-      count: Number(missingInjuryMechanismRows[0]?.Incidents.n ?? 0),
+      count: Number(missingInjuryMechanismRows[0]?.Incidents.ROWID ?? 0),
     },
     {
       label: "OSH-reportable status not yet determined",
       count: pendingReportableCount,
     },
-    { label: "Corrective actions overdue", count: Number(overdueCapaRows[0]?.CAPA.n ?? 0) },
+    { label: "Corrective actions overdue", count: Number(overdueCapaRows[0]?.CAPA.ROWID ?? 0) },
   ];
 }

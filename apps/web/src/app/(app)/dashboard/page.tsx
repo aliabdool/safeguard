@@ -131,24 +131,29 @@ export default async function DashboardPage({
     // confirmed live via the ZCQL Console ("No relationship between tables Departments and
     // Incidents" on a `left join`, same root cause as the UserRoles/Roles bug fixed in
     // server/permissions/index.ts). Department names are joined in application code instead.
+    //
+    // No "as n" alias: confirmed live (see chat) that ZCQL aggregate results are keyed by the
+    // column name INSIDE the function, not the SQL alias — `count(Incidents.ROWID) as n` actually
+    // comes back as `{ Incidents: { ROWID: <count> } }`, not `{ n: <count> } }`. Reading `.n` here
+    // silently read as undefined -> NaN in every tile these two charts render.
     const [byTypeRows, byDeptIdRows] = (await Promise.all([
       zcql.executeZCQLQuery(
-        `select Incidents.incident_type, count(Incidents.ROWID) as n from Incidents
+        `select Incidents.incident_type, count(Incidents.ROWID) from Incidents
          where ${incidentScope} and ${periodClause}
          group by Incidents.incident_type`,
       ),
       zcql.executeZCQLQuery(
-        `select Incidents.department_id, count(Incidents.ROWID) as n from Incidents
+        `select Incidents.department_id, count(Incidents.ROWID) from Incidents
          where ${incidentScope} and ${periodClause}
          group by Incidents.department_id`,
       ),
     ])) as [
-      Array<{ Incidents: { incident_type: string; n: string } }>,
-      Array<{ Incidents: { department_id: string | null; n: string } }>,
+      Array<{ Incidents: { incident_type: string; ROWID: string } }>,
+      Array<{ Incidents: { department_id: string | null; ROWID: string } }>,
     ];
 
     byType = byTypeRows
-      .map((r) => ({ label: r.Incidents.incident_type, count: Number(r.Incidents.n) }))
+      .map((r) => ({ label: r.Incidents.incident_type, count: Number(r.Incidents.ROWID) }))
       .sort((a, b) => b.count - a.count);
 
     const deptIds = [
@@ -170,7 +175,7 @@ export default async function DashboardPage({
         label: r.Incidents.department_id
           ? (deptNameById.get(r.Incidents.department_id) ?? "Unknown department")
           : "Unassigned",
-        count: Number(r.Incidents.n),
+        count: Number(r.Incidents.ROWID),
       }))
       .sort((a, b) => b.count - a.count);
 

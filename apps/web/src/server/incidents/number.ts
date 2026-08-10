@@ -7,21 +7,21 @@ const SEQUENCE_DIGITS = 8;
 
 export interface AllocatedIncidentNumber {
   incidentNumber: string;
-  businessUnitCode: string;
+  incidentPrefix: string;
   referenceYear: string;
   incidentSequence: number;
 }
 
 function formatIncidentNumber(
-  businessUnitCode: string,
+  incidentPrefix: string,
   referenceYear: string,
   sequence: number,
 ): string {
-  return `${businessUnitCode}-${referenceYear}-${String(sequence).padStart(SEQUENCE_DIGITS, "0")}`;
+  return `${incidentPrefix}-${referenceYear}-${String(sequence).padStart(SEQUENCE_DIGITS, "0")}`;
 }
 
 /**
- * The next sequence number to try for `${businessUnitCode}-${referenceYear}` — NOT itself a
+ * The next sequence number to try for `${incidentPrefix}-${referenceYear}` — NOT itself a
  * correctness guarantee (see allocateIncidentNumber's doc comment). Derived as
  * max(advisory hint, highest already-committed Incidents.incident_sequence for this business
  * unit + year) + 1, so a stale or regressed hint (see chat: two concurrent requests can each
@@ -31,7 +31,7 @@ function formatIncidentNumber(
  */
 async function nextCandidateSequence(
   catalystApp: CatalystApp,
-  businessUnitCode: string,
+  incidentPrefix: string,
   referenceYear: string,
   sequenceKey: string,
 ): Promise<number> {
@@ -43,14 +43,20 @@ async function nextCandidateSequence(
       criteria: `IncidentSequence.sequence_name = '${sequenceKey}'`,
       maxRows: 1,
     }),
+    // No "as maxseq" alias: confirmed live against the deployed project (see chat) that ZCQL
+    // aggregate results are keyed by the column name INSIDE the function, not the SQL alias — a
+    // max() query written with an alias returns the value under Incidents.incident_sequence, never
+    // under the alias name. An alias here would silently read as undefined and this whole safety
+    // mechanism would collapse to "always trust the advisory hint," exactly the failure mode this
+    // design exists to avoid.
     zcql.executeZCQLQuery(
-      `select max(Incidents.incident_sequence) as maxseq from Incidents where Incidents.business_unit_code = '${businessUnitCode}' and Incidents.reference_year = '${referenceYear}'`,
-    ) as Promise<Array<{ Incidents: { maxseq: string | null } }>>,
+      `select max(Incidents.incident_sequence) from Incidents where Incidents.incident_prefix = '${incidentPrefix}' and Incidents.reference_year = '${referenceYear}'`,
+    ) as Promise<Array<{ Incidents: { incident_sequence: string | null } }>>,
   ]);
 
   const hint = hintRows[0] as (Record<string, string> & { current_value: string }) | undefined;
   const hintValue = hint ? Number(hint.current_value) : 0;
-  const committedMax = Number(committedRows[0]?.Incidents.maxseq ?? 0);
+  const committedMax = Number(committedRows[0]?.Incidents.incident_sequence ?? 0);
 
   return Math.max(hintValue, committedMax) + 1;
 }
@@ -82,38 +88,43 @@ async function bumpSequenceHint(
 }
 
 /**
- * Allocates the next incident reference for a business unit (Properties.code — this schema's
- * existing "business unit" concept, reused rather than introducing a parallel master-data table)
- * and calendar year, e.g. "LP-2026-00000001". Concurrency-safe WITHOUT relying on any atomic
- * increment primitive (Catalyst's Data Store and SDK expose none — confirmed by inspecting
- * zcatalyst-sdk-node's Table type and the full Datastore tool surface, see chat): the actual
- * duplicate-prevention mechanism is the storage-level UNIQUE constraint on
- * Incidents.incident_sequence (scoped per business-unit+year — see the migration spec in chat)
- * plus retrying the *whole* candidate-then-insert cycle on a unique-violation error. A losing
+ * Allocates the next incident reference for a business unit's `incident_prefix` (Properties.
+ * incident_prefix — a short public-numbering code kept deliberately separate from
+ * Properties.code, the pre-existing legacy/system code other logic may depend on — see chat) and
+ * calendar year, e.g. "LP-2026-00000001". Concurrency-safe WITHOUT relying on any atomic increment
+ * primitive (Catalyst's Data Store and SDK expose none — confirmed by inspecting
+ * zcatalyst-sdk-node's Table type and the full Datastore tool surface, see chat).
+ *
+ * Incidents.incident_sequence deliberately has NO unique constraint (per chat: logical uniqueness
+ * is property/prefix + reference_year + incident_sequence, which Catalyst has no composite-unique
+ * primitive for) — the actual duplicate-prevention backstop is the storage-level UNIQUE constraint
+ * that already exists on Incidents.incident_number (the full formatted string), which two
+ * candidates sharing the same prefix+year+sequence will always collide on identically. A losing
  * request never reuses its own candidate; nextCandidateSequence() is called fresh on every
- * attempt, so it picks up the winner's just-committed row via the live MAX() query. Gaps in the
+ * attempt, so it picks up the winner's just-committed row via the live MAX() query, scoped to this
+ * prefix + year only — other business units and other years allocate independently. Gaps in the
  * sequence are an accepted, explicit trade-off (see chat) — duplicates are not possible as long as
- * the UNIQUE constraint is present in the deployed schema.
+ * the incident_number UNIQUE constraint is present in the deployed schema.
  */
 export async function allocateIncidentNumber(
   catalystApp: CatalystApp,
-  businessUnitCode: string,
+  incidentPrefix: string,
   referenceYear: string,
   insertIncident: (allocation: AllocatedIncidentNumber) => Promise<string>,
 ): Promise<string> {
-  const sequenceKey = `${businessUnitCode}-${referenceYear}`;
+  const sequenceKey = `${incidentPrefix}-${referenceYear}`;
 
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_ALLOCATION_ATTEMPTS; attempt++) {
     const candidate = await nextCandidateSequence(
       catalystApp,
-      businessUnitCode,
+      incidentPrefix,
       referenceYear,
       sequenceKey,
     );
     const allocation: AllocatedIncidentNumber = {
-      incidentNumber: formatIncidentNumber(businessUnitCode, referenceYear, candidate),
-      businessUnitCode,
+      incidentNumber: formatIncidentNumber(incidentPrefix, referenceYear, candidate),
+      incidentPrefix,
       referenceYear,
       incidentSequence: candidate,
     };

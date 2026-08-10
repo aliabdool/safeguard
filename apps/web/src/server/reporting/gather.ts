@@ -125,11 +125,13 @@ export async function gatherAssurancePackInput(
   // queries are unscoped (no WHERE predicate) rather than restricted to the caller's accessible
   // property set — same as the Drizzle version's `gapScopePredicate = propertyId ? eq(...) :
   // undefined`. Not a new gap introduced by this migration, just preserved as-is.
+  // No "as n" alias: confirmed live (see chat) that ZCQL aggregate results — including
+  // count(distinct ...) — are keyed by the column name INSIDE the function, not the SQL alias.
   const gapScope = propertyId ? `CriticalGaps.property_id = '${propertyId}' and ` : "";
   const gapRows = (await zcql.executeZCQLQuery(
-    `select count(distinct CriticalGaps.control_id) as n from CriticalGaps where ${gapScope}CriticalGaps.resolved_at is null`,
-  )) as Array<{ CriticalGaps: { n: string } }>;
-  const criticalGapControlCount = Number(gapRows[0]?.CriticalGaps.n ?? 0);
+    `select count(distinct CriticalGaps.control_id) from CriticalGaps where ${gapScope}CriticalGaps.resolved_at is null`,
+  )) as Array<{ CriticalGaps: { control_id: string } }>;
+  const criticalGapControlCount = Number(gapRows[0]?.CriticalGaps.control_id ?? 0);
 
   // AuditFindings.audit_id / .control_id are plain Text columns, not real Lookup/FKs to Audits /
   // Controls (same class of bug as the UserRoles/Roles join fixed in server/permissions/index.ts),
@@ -178,11 +180,11 @@ export async function gatherAssurancePackInput(
 
   const capaScope = propertyId ? ` where CAPA.property_id = '${propertyId}'` : "";
   const capaRows = (await zcql.executeZCQLQuery(
-    `select CAPA.status, count(CAPA.ROWID) as n from CAPA${capaScope} group by CAPA.status`,
-  )) as Array<{ CAPA: { status: string; n: string } }>;
+    `select CAPA.status, count(CAPA.ROWID) from CAPA${capaScope} group by CAPA.status`,
+  )) as Array<{ CAPA: { status: string; ROWID: string } }>;
   const capaStatusCounts: Record<string, number> = {};
   for (const { CAPA: c } of capaRows) {
-    capaStatusCounts[c.status] = Number(c.n);
+    capaStatusCounts[c.status] = Number(c.ROWID);
   }
 
   return {

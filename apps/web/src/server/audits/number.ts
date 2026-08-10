@@ -13,13 +13,16 @@ export async function nextAuditReference(catalystApp: CatalystApp): Promise<stri
   const yearStart = toZcqlDateTime(new Date(Date.UTC(year, 0, 1)));
   const yearEnd = toZcqlDateTime(new Date(Date.UTC(year + 1, 0, 1)));
 
+  // No "as n" alias: confirmed live (see chat) that ZCQL aggregate results are keyed by the
+  // column name INSIDE the function, not the SQL alias — reading `.Audits.n` silently returned
+  // undefined -> 0 every time, so this always allocated sequence 1.
   const rows = (await catalystApp
     .zcql()
     .executeZCQLQuery(
-      `select count(Audits.ROWID) as n from Audits where Audits.created_at >= '${yearStart}' and Audits.created_at <= '${yearEnd}'`,
-    )) as Array<{ Audits: { n: string } }>;
+      `select count(Audits.ROWID) from Audits where Audits.created_at >= '${yearStart}' and Audits.created_at <= '${yearEnd}'`,
+    )) as Array<{ Audits: { ROWID: string } }>;
 
-  const seq = Number(rows[0]?.Audits.n ?? "0") + 1;
+  const seq = Number(rows[0]?.Audits.ROWID ?? "0") + 1;
   return `AUD-${year}-${String(seq).padStart(4, "0")}`;
 }
 
@@ -29,12 +32,13 @@ export async function nextFindingNumber(catalystApp: CatalystApp): Promise<strin
   const yearStart = toZcqlDateTime(new Date(Date.UTC(year, 0, 1)));
   const yearEnd = toZcqlDateTime(new Date(Date.UTC(year + 1, 0, 1)));
 
+  // No "as n" alias — same reasoning as nextAuditReference() above.
   const rows = (await catalystApp
     .zcql()
     .executeZCQLQuery(
-      `select count(AuditFindings.ROWID) as n from AuditFindings where AuditFindings.raised_at >= '${yearStart}' and AuditFindings.raised_at <= '${yearEnd}'`,
-    )) as Array<{ AuditFindings: { n: string } }>;
+      `select count(AuditFindings.ROWID) from AuditFindings where AuditFindings.raised_at >= '${yearStart}' and AuditFindings.raised_at <= '${yearEnd}'`,
+    )) as Array<{ AuditFindings: { ROWID: string } }>;
 
-  const seq = Number(rows[0]?.AuditFindings.n ?? "0") + 1;
+  const seq = Number(rows[0]?.AuditFindings.ROWID ?? "0") + 1;
   return `FND-${year}-${String(seq).padStart(4, "0")}`;
 }
