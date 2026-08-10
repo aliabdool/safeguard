@@ -99,8 +99,8 @@ describe("generateBoardNarrative", () => {
       generatedAt: new Date("2026-07-20"),
       kpis: [],
       dataQuality: [
-        { label: "Missing root cause", count: 0 },
-        { label: "Corrective actions overdue", count: 3 },
+        { label: "Missing root cause", count: 0, sampleIncidentIds: [] },
+        { label: "Corrective actions overdue", count: 3, sampleIncidentIds: [] },
       ],
     });
     expect(narrative).not.toContain("Missing root cause: 0");

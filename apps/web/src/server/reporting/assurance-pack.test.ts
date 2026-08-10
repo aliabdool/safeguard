@@ -50,8 +50,8 @@ describe("buildAssurancePackMarkdown", () => {
     const pack = buildAssurancePackMarkdown({
       ...base,
       dataQuality: [
-        { label: "Missing root cause", count: 0 },
-        { label: "Corrective actions overdue", count: 4 },
+        { label: "Missing root cause", count: 0, sampleIncidentIds: [] },
+        { label: "Corrective actions overdue", count: 4, sampleIncidentIds: [] },
       ],
     });
     expect(pack).not.toContain("| Missing root cause | 0 |");

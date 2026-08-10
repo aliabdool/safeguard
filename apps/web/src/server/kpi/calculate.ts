@@ -17,6 +17,12 @@ import {
   sumIncidentIntegerFieldInPeriod,
 } from "./calculations/incidents";
 import { financialYearFor, previousFinancialYear, sameperiodYtdComparison } from "./period";
+import {
+  guestIncidentsPerThousandRoomNights,
+  ltifr,
+  severityRate,
+  trir,
+} from "./calculations/rates";
 import { computeRagStatus, computeVariance, type KpiDirection, type RagStatus } from "./rag";
 import type { KpiCalculationParams, KpiCalculationResult } from "./types";
 
@@ -59,6 +65,13 @@ const REGISTRY: Record<string, CalculationFn> = {
   CAPA_ON_TIME: (p) => capaClosedOnTimeRate(p),
   ISO45001_READINESS: (p) => frameworkReadinessKpi("ISO45001", p),
   LEGAL_COMPLIANCE: (p) => frameworkReadinessKpi("MU_LEGAL", p),
+  GRI403_READINESS: (p) => frameworkReadinessKpi("GRI403", p),
+  IFRS_S1_READINESS: (p) => frameworkReadinessKpi("IFRS_S1", p),
+  IFRS_S2_READINESS: (p) => frameworkReadinessKpi("IFRS_S2", p),
+  LTIFR: (p) => ltifr(p),
+  TRIR: (p) => trir(p),
+  SEVERITY_RATE: (p) => severityRate(p),
+  GUEST_INC_PER_1000_RN: (p) => guestIncidentsPerThousandRoomNights(p),
 };
 
 export interface KpiTileResult {

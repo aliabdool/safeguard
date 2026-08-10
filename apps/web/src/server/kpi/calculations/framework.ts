@@ -50,7 +50,7 @@ const INCOMPLETE_RESULT: KpiCalculationResult = {
  *    written by apps/web's framework module yet.
  */
 export async function frameworkReadinessKpi(
-  frameworkCode: "ISO45001" | "MU_LEGAL",
+  frameworkCode: string,
   params: KpiCalculationParams,
 ): Promise<KpiCalculationResult> {
   const datastore = params.catalystApp.datastore();

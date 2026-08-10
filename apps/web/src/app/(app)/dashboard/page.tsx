@@ -1,206 +1,292 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
-import { mapWithConcurrency } from "@/lib/concurrency";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { catalystAppFromHeaders } from "@/lib/catalyst/app";
 import { logDebugError } from "@/lib/debug-log";
-import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
+import { computeAssuranceHeatmap } from "@/server/dashboard/assurance-heatmap";
+import type { HeatmapRow } from "@/server/dashboard/assurance-heatmap";
+import { computeBusinessUnitComparison } from "@/server/dashboard/business-units";
+import type { BusinessUnitComparisonRow } from "@/server/dashboard/business-units";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
+import type { DataQualityRow } from "@/server/dashboard/data-quality";
+import { computeAllFrameworkReadiness, computeOverallMaturity } from "@/server/dashboard/frameworks";
+import type { FrameworkReadinessRow } from "@/server/dashboard/frameworks";
+import { computeManagementAttention } from "@/server/dashboard/management-attention";
+import type { ManagementAttentionItem } from "@/server/dashboard/management-attention";
+import { generateExecutiveNarrative } from "@/server/dashboard/narrative";
+import type { ExecutiveNarrative } from "@/server/dashboard/narrative";
+import { computeSafetyPerformance } from "@/server/dashboard/safety-performance";
+import type { SafetyPerformanceData } from "@/server/dashboard/safety-performance";
+import {
+  DASHBOARD_ROLES,
+  GROUP_SCOPE_PARAM,
+  resolveDashboardScope,
+} from "@/server/dashboard/scope";
+import type { BusinessUnit, DashboardScope } from "@/server/dashboard/scope";
 import { calculateKpi } from "@/server/kpi/calculate";
-import { financialYearFor, recentFinancialYears } from "@/server/kpi/period";
-import { propertyScopeClause } from "@/server/kpi/scope";
-import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
+import {
+  financialYearFor,
+  previousFinancialYear,
+  recentFinancialYears,
+  sameperiodYtdComparison,
+} from "@/server/kpi/period";
+import { getAuthContext } from "@/server/permissions";
 
-import { IncidentBarChart } from "./incident-bar-chart";
-import { KpiTile } from "../kpis/kpi-tile";
-
-const HEADLINE_KPI_CODES = [
-  "TOTAL_INCIDENTS",
-  "EMPLOYEE_INCIDENTS",
-  "TRAINEE_INCIDENTS",
-  "CONTRACTOR_INCIDENTS",
-  "GUEST_INCIDENTS",
-  "FATALITIES",
-  "LTI",
-  "LOST_WORKDAYS",
-  "RESTRICTED_DUTY_DAYS",
-  "MTC",
-  "HOSPITAL_REFERRALS",
-  "RECORDABLE_INJURIES",
-  "REPORTABLE_OSH_CASES",
-  "HIGH_POTENTIAL",
-  "NEAR_MISSES",
-  "INCIDENT_COST",
-  "OPEN_CRIT_MAJOR_FINDINGS",
-  "CAPA_EFFECTIVENESS",
-];
-
-interface PropertyRow extends CatalystRow {
-  name: string;
-}
+import {
+  AssuranceHeatmapPanel,
+  BusinessUnitTable,
+  DataQualityPanel,
+  ExecutiveKpiStrip,
+  FrameworkReadinessPanel,
+  ManagementAttentionPanel,
+  NarrativePanel,
+  SafetyPerformancePanel,
+  type ExecTile,
+} from "./sections";
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ propertyId?: string; fy?: string }>;
+  searchParams: Promise<{ bu?: string; fy?: string }>;
 }) {
-  const { propertyId, fy } = await searchParams;
   const ctx = await getAuthContext();
 
-  if (!ctx || (ctx.propertyIds.length === 0 && !ctx.roleCodes.length)) {
+  if (!ctx) {
     return (
       <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground text-sm">
-            Roles: {ctx?.roleCodes.join(", ") || "none assigned yet"} · Properties:{" "}
-            {ctx?.propertyIds.length ?? 0}
-          </p>
-        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Sunlife Group H&amp;S Assurance &amp; Readiness
+        </h1>
         <Card>
           <CardHeader>
-            <CardTitle>No access assigned yet</CardTitle>
-            <CardDescription>
-              An administrator needs to grant you a role and at least one property before
-              incident, audit, document or KPI data becomes visible.
-            </CardDescription>
+            <CardTitle>Sign in required</CardTitle>
           </CardHeader>
         </Card>
       </div>
     );
   }
 
-  const catalystApp = catalystAppFromHeaders(await headers());
-  const datastore = catalystApp.datastore();
-  const zcql = catalystApp.zcql();
+  const hasDashboardAccess = ctx.roleCodes.some((r) =>
+    (DASHBOARD_ROLES as readonly string[]).includes(r),
+  );
+  if (!hasDashboardAccess) {
+    return (
+      <div className="flex flex-col gap-6">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Sunlife Group H&amp;S Assurance &amp; Readiness
+        </h1>
+        <Card>
+          <CardHeader>
+            <CardTitle>Executive access required</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground text-sm">
+              This view is scoped to Group Executive/Admin roles (Group H&amp;S Admin, Super Admin,
+              or Executive Read-Only). Your current roles: {ctx.roleCodes.join(", ") || "none"}.
+              Ask an administrator to grant executive-reporting access if this is incorrect.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-  let allProperties: PropertyRow[];
-  let availableProperties: PropertyRow[];
+  const { bu, fy } = await searchParams;
+  const catalystApp = catalystAppFromHeaders(await headers());
+
+  let scope: DashboardScope;
+  let businessUnits: BusinessUnit[];
   let fyOptions: ReturnType<typeof recentFinancialYears>;
   let selectedFy: ReturnType<typeof recentFinancialYears>[number];
-  let selectedPeriod: ReturnType<typeof financialYearFor>["period"];
-  let tiles: Awaited<ReturnType<typeof calculateKpi>>[];
-  let byType: Array<{ label: string; count: number }>;
-  let byDept: Array<{ label: string; count: number }>;
-  let dataQuality: Awaited<ReturnType<typeof computeDataQuality>>;
-  let selectedPropertyId: string | null;
+  let fyLabel: string;
+  let asOf: Date;
+  let managementAttention: ManagementAttentionItem[];
+  let businessUnitRows: BusinessUnitComparisonRow[];
+  let frameworkReadiness: FrameworkReadinessRow[];
+  let heatmapRows: HeatmapRow[];
+  let safetyPerformance: SafetyPerformanceData;
+  let dataQuality: DataQualityRow[];
+  let execTiles: ExecTile[];
+  let narrative: ExecutiveNarrative;
+  let scopedRow: BusinessUnitComparisonRow | undefined;
+  let overallMaturity: Awaited<ReturnType<typeof computeOverallMaturity>>;
 
   // TEMPORARY: explicit console.error so the real error is visible in AppSail logs — Next.js
-  // redacts Server Component error messages by default in production, even from the documented
-  // instrumentation.ts onRequestError hook (per its own docs: "error instance might not be the
-  // original error instance ... if encountered during Server Components rendering"). Remove once
-  // the dashboard is confirmed working end-to-end (see chat).
+  // redacts Server Component error messages by default in production (see the equivalent comment
+  // on the original operational dashboard, and the audit-log datetime bug this exact pattern
+  // caught earlier — see chat). Remove once this dashboard is confirmed working end-to-end.
   try {
-    allProperties = (await datastore.table("Properties").getRows({ maxRows: 200 })) as PropertyRow[];
-    availableProperties = allProperties.filter((p) => hasPropertyAccess(ctx, p.ROWID));
-    selectedPropertyId =
-      propertyId && availableProperties.some((p) => p.ROWID === propertyId) ? propertyId : null;
+    const resolved = await resolveDashboardScope(catalystApp, bu);
+    scope = resolved.scope;
+    businessUnits = resolved.businessUnits;
+    const propertyNameById = new Map(businessUnits.map((b) => [b.id, b.name]));
 
     fyOptions = recentFinancialYears(new Date());
     selectedFy = fyOptions.find((o) => o.label === fy) ?? fyOptions[0]!;
-    selectedPeriod = financialYearFor(selectedFy.asOfAnchor).period;
+    asOf = selectedFy.asOfAnchor;
+    const { fyLabel: resolvedFyLabel, period: currentPeriod } = financialYearFor(asOf);
+    fyLabel = resolvedFyLabel;
+    const comparisonPeriodFull = previousFinancialYear(currentPeriod);
+    const { comparisonEnd } = sameperiodYtdComparison(currentPeriod, comparisonPeriodFull, asOf);
 
-    tiles = await mapWithConcurrency(HEADLINE_KPI_CODES, 4, (code) =>
-      calculateKpi(catalystApp, ctx, code, {
-        propertyId: selectedPropertyId,
-        asOf: selectedFy.asOfAnchor,
+    let legalKpi, iso45001Kpi, gri403Kpi, ifrsS1Kpi, ifrsS2Kpi, highPotentialKpi, critMajorKpi;
+    [
+      managementAttention,
+      businessUnitRows,
+      frameworkReadiness,
+      overallMaturity,
+      heatmapRows,
+      safetyPerformance,
+      dataQuality,
+      legalKpi,
+      iso45001Kpi,
+      gri403Kpi,
+      ifrsS1Kpi,
+      ifrsS2Kpi,
+      highPotentialKpi,
+      critMajorKpi,
+    ] = await Promise.all([
+      computeManagementAttention(catalystApp, ctx, scope, propertyNameById),
+      computeBusinessUnitComparison(catalystApp, ctx, businessUnits, asOf),
+      computeAllFrameworkReadiness(catalystApp, scope, ctx),
+      computeOverallMaturity(catalystApp, scope, ctx),
+      computeAssuranceHeatmap(catalystApp, ctx, businessUnits, {
+        start: currentPeriod.start,
+        end: currentPeriod.end,
+        comparisonStart: comparisonPeriodFull.start,
+        comparisonEnd,
       }),
-    );
+      computeSafetyPerformance(catalystApp, ctx, scope.propertyId, asOf),
+      computeDataQuality({
+        catalystApp,
+        ctx,
+        propertyId: scope.propertyId,
+        periodStart: currentPeriod.start,
+        periodEnd: asOf < currentPeriod.end ? asOf : currentPeriod.end,
+      }),
+      calculateKpi(catalystApp, ctx, "LEGAL_COMPLIANCE", { propertyId: scope.propertyId, asOf }),
+      calculateKpi(catalystApp, ctx, "ISO45001_READINESS", { propertyId: scope.propertyId, asOf }),
+      calculateKpi(catalystApp, ctx, "GRI403_READINESS", { propertyId: scope.propertyId, asOf }),
+      calculateKpi(catalystApp, ctx, "IFRS_S1_READINESS", { propertyId: scope.propertyId, asOf }),
+      calculateKpi(catalystApp, ctx, "IFRS_S2_READINESS", { propertyId: scope.propertyId, asOf }),
+      calculateKpi(catalystApp, ctx, "HIGH_POTENTIAL", { propertyId: scope.propertyId, asOf }),
+      calculateKpi(catalystApp, ctx, "OPEN_CRIT_MAJOR_FINDINGS", {
+        propertyId: scope.propertyId,
+        asOf,
+      }),
+    ]);
 
-    const incidentScope = selectedPropertyId
-      ? `Incidents.property_id = '${selectedPropertyId}'`
-      : propertyScopeClause("Incidents.property_id", ctx);
-    const periodClause = `Incidents.occurred_at >= '${toZcqlDateTime(selectedPeriod.start)}' and Incidents.occurred_at <= '${toZcqlDateTime(selectedPeriod.end)}'`;
+    scopedRow =
+      businessUnitRows.find(
+        (r) => (scope.kind === "group" && r.isGroupTotal) || r.businessUnitId === scope.propertyId,
+      ) ?? businessUnitRows[0];
 
-    // Incidents.department_id is a plain Text column, not a real Lookup/FK to Departments —
-    // confirmed live via the ZCQL Console ("No relationship between tables Departments and
-    // Incidents" on a `left join`, same root cause as the UserRoles/Roles bug fixed in
-    // server/permissions/index.ts). Department names are joined in application code instead.
-    //
-    // No "as n" alias: confirmed live (see chat) that ZCQL aggregate results are keyed by the
-    // column name INSIDE the function, not the SQL alias — `count(Incidents.ROWID) as n` actually
-    // comes back as `{ Incidents: { ROWID: <count> } }`, not `{ n: <count> } }`. Reading `.n` here
-    // silently read as undefined -> NaN in every tile these two charts render.
-    const [byTypeRows, byDeptIdRows] = (await Promise.all([
-      zcql.executeZCQLQuery(
-        `select Incidents.incident_type, count(Incidents.ROWID) from Incidents
-         where ${incidentScope} and ${periodClause}
-         group by Incidents.incident_type`,
-      ),
-      zcql.executeZCQLQuery(
-        `select Incidents.department_id, count(Incidents.ROWID) from Incidents
-         where ${incidentScope} and ${periodClause}
-         group by Incidents.department_id`,
-      ),
-    ])) as [
-      Array<{ Incidents: { incident_type: string; ROWID: string } }>,
-      Array<{ Incidents: { department_id: string | null; ROWID: string } }>,
+    execTiles = [
+      {
+        code: "OVERALL_MATURITY",
+        label: "Overall H&S system maturity",
+        result:
+          overallMaturity.readinessPct != null
+            ? {
+                currentValue: overallMaturity.readinessPct,
+                comparisonValue: null,
+                ragStatus: overallMaturity.ragStatus,
+                unit: "%",
+              }
+            : null,
+        linkHref: null,
+      },
+      {
+        code: "LEGAL_COMPLIANCE",
+        label: "Legal compliance status",
+        result: legalKpi,
+        linkHref: `/kpis/LEGAL_COMPLIANCE${scope.propertyId ? `?propertyId=${scope.propertyId}` : ""}`,
+      },
+      {
+        code: "ISO45001_READINESS",
+        label: "ISO 45001 readiness",
+        result: iso45001Kpi,
+        linkHref: `/kpis/ISO45001_READINESS${scope.propertyId ? `?propertyId=${scope.propertyId}` : ""}`,
+      },
+      {
+        code: "GRI403_READINESS",
+        label: "GRI 403 readiness",
+        result: gri403Kpi,
+        linkHref: gri403Kpi
+          ? `/kpis/GRI403_READINESS${scope.propertyId ? `?propertyId=${scope.propertyId}` : ""}`
+          : null,
+      },
+      {
+        code: "IFRS_S1_READINESS",
+        label: "ISSB / IFRS S1 evidence readiness",
+        result: ifrsS1Kpi,
+        linkHref: ifrsS1Kpi
+          ? `/kpis/IFRS_S1_READINESS${scope.propertyId ? `?propertyId=${scope.propertyId}` : ""}`
+          : null,
+      },
+      {
+        code: "IFRS_S2_READINESS",
+        label: "ISSB / IFRS S2 evidence readiness",
+        result: ifrsS2Kpi,
+        linkHref: ifrsS2Kpi
+          ? `/kpis/IFRS_S2_READINESS${scope.propertyId ? `?propertyId=${scope.propertyId}` : ""}`
+          : null,
+      },
+      {
+        code: "OPEN_CRIT_MAJOR_FINDINGS",
+        label: "Critical + Major findings",
+        result: critMajorKpi,
+        linkHref: `/kpis/OPEN_CRIT_MAJOR_FINDINGS${scope.propertyId ? `?propertyId=${scope.propertyId}` : ""}`,
+      },
+      {
+        code: "OVERDUE_CAPA",
+        label: "Overdue CAPA",
+        result: scopedRow
+          ? {
+              currentValue: scopedRow.overdueCapa,
+              comparisonValue: null,
+              ragStatus: (scopedRow.overdueCapa ?? 0) > 0 ? "amber" : "green",
+              unit: "count",
+            }
+          : null,
+        linkHref: "/capa",
+      },
+      {
+        code: "HIGH_POTENTIAL",
+        label: "High-potential incidents",
+        result: highPotentialKpi,
+        linkHref: `/kpis/HIGH_POTENTIAL${scope.propertyId ? `?propertyId=${scope.propertyId}` : ""}`,
+      },
     ];
 
-    byType = byTypeRows
-      .map((r) => ({ label: r.Incidents.incident_type, count: Number(r.Incidents.ROWID) }))
-      .sort((a, b) => b.count - a.count);
-
-    const deptIds = [
-      ...new Set(
-        byDeptIdRows
-          .map((r) => r.Incidents.department_id)
-          .filter((id): id is string => !!id),
-      ),
-    ];
-    const deptRows =
-      deptIds.length > 0
-        ? ((await datastore.table("Departments").getRows({
-            criteria: `Departments.ROWID in (${deptIds.map((id) => `'${id}'`).join(",")})`,
-          })) as Array<CatalystRow & { name: string }>)
-        : [];
-    const deptNameById = new Map(deptRows.map((d) => [d.ROWID, d.name]));
-    byDept = byDeptIdRows
-      .map((r) => ({
-        label: r.Incidents.department_id
-          ? (deptNameById.get(r.Incidents.department_id) ?? "Unknown department")
-          : "Unassigned",
-        count: Number(r.Incidents.ROWID),
-      }))
-      .sort((a, b) => b.count - a.count);
-
-    // Data-quality panel — real checks against this FY/property's own records, not fabricated.
-    dataQuality = await computeDataQuality({
-      catalystApp,
-      ctx,
-      propertyId: selectedPropertyId,
-      periodStart: selectedPeriod.start,
-      periodEnd: selectedPeriod.end,
+    narrative = generateExecutiveNarrative({
+      scopeLabel: scope.label,
+      fyLabel,
+      totalIncidentsCurrent: scopedRow?.totalIncidents ?? null,
+      totalIncidentsComparison: null,
+      highPotentialCurrent: highPotentialKpi?.currentValue ?? null,
+      managementAttention,
+      businessUnitRows,
+      frameworkReadiness,
+      dataQuality,
     });
   } catch (err) {
-    logDebugError("DASHBOARD_DEBUG_REAL_ERROR:", err);
+    logDebugError("CEO_DASHBOARD_DEBUG_ERROR:", err);
     throw err;
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Board &amp; management dashboard
+          Sunlife Group H&amp;S Assurance &amp; Readiness
         </h1>
         <p className="text-muted-foreground text-sm">
-          {selectedFy.label} · every figure computed live from Catalyst Data Store records — never
-          hard-coded. Click a tile for the full &ldquo;View calculation&rdquo; breakdown.
+          {scope.label} · {fyLabel} · Data through {asOf.toLocaleDateString()} · Data completeness{" "}
+          {scopedRow?.dataCompletenessPct != null ? `${scopedRow.dataCompletenessPct.toFixed(0)}%` : "—"}{" "}
+          · Records included {scopedRow?.totalIncidents ?? "—"}
         </p>
       </div>
 
@@ -221,16 +307,16 @@ export default async function DashboardPage({
           </Select>
         </div>
         <div className="grid gap-1">
-          <label className="text-muted-foreground text-xs">Property</label>
-          <Select name="propertyId" defaultValue={selectedPropertyId ?? "all"}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="All accessible properties" />
+          <label className="text-muted-foreground text-xs">Business Unit</label>
+          <Select name="bu" defaultValue={scope.propertyId ?? GROUP_SCOPE_PARAM}>
+            <SelectTrigger className="w-56">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All accessible properties</SelectItem>
-              {availableProperties.map((p) => (
-                <SelectItem key={p.ROWID} value={p.ROWID}>
-                  {p.name}
+              <SelectItem value={GROUP_SCOPE_PARAM}>Sunlife Group</SelectItem>
+              {businessUnits.map((b) => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -242,62 +328,83 @@ export default async function DashboardPage({
         >
           Apply
         </button>
-        <Link
-          href={`/reports/export?fy=${encodeURIComponent(selectedFy.label)}${selectedPropertyId ? `&propertyId=${selectedPropertyId}` : ""}`}
-          className="text-primary ml-auto self-center text-sm underline"
-        >
-          Board narrative &amp; assurance pack →
-        </Link>
-        <Link href="/kpis" className="text-primary self-center text-sm underline">
-          Full KPI catalogue →
-        </Link>
+        <div className="ml-auto flex flex-wrap items-center gap-3">
+          <Link
+            href={`/reports/export?fy=${encodeURIComponent(fyLabel)}${scope.propertyId ? `&propertyId=${scope.propertyId}` : ""}`}
+            className="text-primary text-sm underline"
+          >
+            Generate Board Pack →
+          </Link>
+          <Link href="/kpis" className="text-primary text-sm underline">
+            View Calculations →
+          </Link>
+          <Link href="/reports/export" className="text-primary text-sm underline">
+            Reports &amp; Exports →
+          </Link>
+        </div>
       </form>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-        {tiles.map((kpi) => (kpi ? <KpiTile key={kpi.kpiCode} kpi={kpi} /> : null))}
-      </div>
+      <ManagementAttentionPanel items={managementAttention} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">Executive assurance</h2>
+        <ExecutiveKpiStrip tiles={execTiles} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Framework &amp; disclosure readiness
+        </h2>
+        <FrameworkReadinessPanel rows={frameworkReadiness} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">Business Unit comparison</h2>
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Incidents by type</CardTitle>
-            <CardDescription>{selectedFy.label}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <IncidentBarChart data={byType.map((r) => ({ label: r.label, count: r.count }))} />
+          <CardContent className="p-4">
+            <BusinessUnitTable rows={businessUnitRows} fy={selectedFy.label} />
           </CardContent>
         </Card>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">Assurance heatmap</h2>
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Incidents by department</CardTitle>
-            <CardDescription>{selectedFy.label}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <IncidentBarChart
-              data={byDept.map((r) => ({ label: r.label, count: r.count }))}
-              color="var(--color-warning)"
-            />
+          <CardContent className="p-4">
+            <AssuranceHeatmapPanel rows={heatmapRows} />
           </CardContent>
         </Card>
-      </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Data quality</CardTitle>
-          <CardDescription>
-            Gaps in this period&rsquo;s own records — the same checks a board pack should be
-            reconciled against before publication.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {dataQuality.map((row) => (
-            <div key={row.label} className="flex items-center justify-between text-sm">
-              <span>{row.label}</span>
-              <Badge variant={row.count > 0 ? "warning" : "success"}>{row.count}</Badge>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <section className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight">Safety performance</h2>
+          <Link href="/kpis" className="text-primary text-sm underline">
+            Full analytics →
+          </Link>
+        </div>
+        <SafetyPerformancePanel data={safetyPerformance} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Data quality &amp; disclosure confidence
+        </h2>
+        <Card>
+          <CardContent className="p-4">
+            <DataQualityPanel rows={dataQuality} />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">Executive narrative</h2>
+        <Card>
+          <CardContent className="p-4">
+            <NarrativePanel narrative={narrative} />
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }
