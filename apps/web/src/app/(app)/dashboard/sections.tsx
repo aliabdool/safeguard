@@ -3,10 +3,20 @@ import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { HeatmapRow } from "@/server/dashboard/assurance-heatmap";
 import { ASSURANCE_AREAS } from "@/server/dashboard/assurance-heatmap";
-import type { AssuranceStatus, BusinessUnitComparisonRow } from "@/server/dashboard/business-units";
+import type {
+  AssuranceStatus,
+  BusinessUnitComparisonRow,
+} from "@/server/dashboard/business-units";
 import type { DataQualityRow } from "@/server/dashboard/data-quality";
 import type { FrameworkReadinessRow } from "@/server/dashboard/frameworks";
 import type { ManagementAttentionItem } from "@/server/dashboard/management-attention";
@@ -14,7 +24,13 @@ import type { ExecutiveNarrative } from "@/server/dashboard/narrative";
 import type { SafetyPerformanceData } from "@/server/dashboard/safety-performance";
 import { GROUP_SCOPE_PARAM } from "@/server/dashboard/scope";
 
-import { formatDelta, formatKpiValue, heatmapRagClasses, heatmapRagLabel, RagBadge } from "./rag";
+import {
+  formatDelta,
+  formatKpiValue,
+  heatmapRagClasses,
+  heatmapRagLabel,
+  RagBadge,
+} from "./rag";
 
 // ---------------------------------------------------------------------------
 // §3 Management attention / legal override
@@ -68,7 +84,12 @@ export function ManagementAttentionPanel({ items }: { items: ManagementAttention
 export interface ExecTile {
   code: string;
   label: string;
-  result: { currentValue: number | null; comparisonValue: number | null; ragStatus: import("@/server/kpi/rag").RagStatus; unit: string } | null;
+  result: {
+    currentValue: number | null;
+    comparisonValue: number | null;
+    ragStatus: import("@/server/kpi/rag").RagStatus;
+    unit: string;
+  } | null;
   linkHref: string | null;
 }
 
@@ -81,10 +102,16 @@ export function ExecutiveKpiStrip({ tiles }: { tiles: ExecTile[] }) {
             <CardContent className="flex flex-col gap-1 p-4">
               <p className="text-muted-foreground text-xs font-medium">{tile.label}</p>
               <p className="text-2xl font-semibold tracking-tight">
-                {tile.result ? formatKpiValue(tile.result.currentValue, tile.result.unit) : "Not assessed"}
+                {tile.result
+                  ? formatKpiValue(tile.result.currentValue, tile.result.unit)
+                  : "Not assessed"}
               </p>
               <div className="flex items-center justify-between">
-                {tile.result ? <RagBadge status={tile.result.ragStatus} /> : <RagBadge status="unknown" />}
+                {tile.result ? (
+                  <RagBadge status={tile.result.ragStatus} />
+                ) : (
+                  <RagBadge status="unknown" />
+                )}
                 {tile.result ? (
                   <span className="text-muted-foreground text-[11px]">
                     {formatDelta(tile.result.currentValue, tile.result.comparisonValue) ?? "—"}
@@ -121,7 +148,9 @@ export function FrameworkReadinessPanel({ rows }: { rows: FrameworkReadinessRow[
               <div className="flex items-center gap-2">
                 {fw.status === "assessed" ? (
                   <>
-                    <span className="text-lg font-semibold">{fw.readinessPct?.toFixed(0)}%</span>
+                    <span className="text-lg font-semibold">
+                      {fw.readinessPct?.toFixed(0)}%
+                    </span>
                     <RagBadge status={fw.ragStatus} />
                   </>
                 ) : fw.status === "not_applicable" ? (
@@ -138,7 +167,8 @@ export function FrameworkReadinessPanel({ rows }: { rows: FrameworkReadinessRow[
                   {fw.openGapsCount} open gap{fw.openGapsCount === 1 ? "" : "s"}
                 </span>
                 <span>
-                  {fw.mappedControlCount} control{fw.mappedControlCount === 1 ? "" : "s"} mapped
+                  {fw.mappedControlCount} control{fw.mappedControlCount === 1 ? "" : "s"}{" "}
+                  mapped
                 </span>
                 <span>{fw.nextAction}</span>
               </div>
@@ -170,7 +200,10 @@ export function FrameworkReadinessPanel({ rows }: { rows: FrameworkReadinessRow[
 // ---------------------------------------------------------------------------
 
 function assuranceStatusBadge(status: AssuranceStatus) {
-  const map: Record<AssuranceStatus, { label: string; variant: "destructive" | "warning" | "success" | "secondary" }> = {
+  const map: Record<
+    AssuranceStatus,
+    { label: string; variant: "destructive" | "warning" | "success" | "secondary" }
+  > = {
     exception: { label: "Exception", variant: "destructive" },
     attention: { label: "Attention", variant: "warning" },
     satisfactory: { label: "Satisfactory", variant: "success" },
@@ -191,11 +224,18 @@ export function BusinessUnitTable({
     .filter((r) => !r.isGroupTotal)
     .reduce<BusinessUnitComparisonRow | null>((worst, r) => {
       const score = (x: BusinessUnitComparisonRow) =>
-        (x.criticalMajorFindings ?? 0) * 10 + (x.overdueCapa ?? 0) * 3 + (x.fatalities ?? 0) * 100;
+        (x.criticalMajorFindings ?? 0) * 10 +
+        (x.overdueCapa ?? 0) * 3 +
+        (x.fatalities ?? 0) * 100;
       if (!worst) return r;
       return score(r) > score(worst) ? r : worst;
     }, null);
 
+  // Only the 8 columns the brief calls out (see chat §Q) stay visible by default — Business Unit,
+  // Incidents, LTI, High Potential, Lost Days, Overdue CAPA, Major/Critical findings, Assurance.
+  // Everything else moves behind a per-row "View details" disclosure so the table never needs
+  // horizontal scroll. <details>/<summary> keeps this a plain server-rendered table (no client
+  // component/JS needed for the toggle).
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -203,23 +243,21 @@ export function BusinessUnitTable({
           <TableRow>
             <TableHead>Business Unit</TableHead>
             <TableHead className="text-right">Incidents</TableHead>
-            <TableHead className="text-right">Fatalities</TableHead>
             <TableHead className="text-right">LTI</TableHead>
             <TableHead className="text-right">High-potential</TableHead>
             <TableHead className="text-right">Lost days</TableHead>
-            <TableHead className="text-right">Hospital referrals</TableHead>
-            <TableHead className="text-right">OSH-reportable</TableHead>
-            <TableHead className="text-right">Open investigations</TableHead>
-            <TableHead className="text-right">Open CAPA</TableHead>
             <TableHead className="text-right">Overdue CAPA</TableHead>
             <TableHead className="text-right">Crit/Major findings</TableHead>
-            <TableHead className="text-right">Data completeness</TableHead>
             <TableHead>Assurance</TableHead>
+            <TableHead className="text-right">Details</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((r) => (
-            <TableRow key={r.businessUnitId ?? "group"} className={r.isGroupTotal ? "bg-muted/40 font-medium" : ""}>
+            <TableRow
+              key={r.businessUnitId ?? "group"}
+              className={r.isGroupTotal ? "bg-muted/40 font-medium" : ""}
+            >
               <TableCell>
                 <Link
                   href={`/dashboard?bu=${r.businessUnitId ?? GROUP_SCOPE_PARAM}&fy=${fy}`}
@@ -234,20 +272,37 @@ export function BusinessUnitTable({
                 </Link>
               </TableCell>
               <TableCell className="text-right">{r.totalIncidents ?? "—"}</TableCell>
-              <TableCell className="text-right">{r.fatalities ?? "—"}</TableCell>
               <TableCell className="text-right">{r.lti ?? "—"}</TableCell>
               <TableCell className="text-right">{r.highPotential ?? "—"}</TableCell>
               <TableCell className="text-right">{r.lostDays ?? "—"}</TableCell>
-              <TableCell className="text-right">{r.hospitalReferrals ?? "—"}</TableCell>
-              <TableCell className="text-right">{r.oshReportable ?? "—"}</TableCell>
-              <TableCell className="text-right">{r.openInvestigations ?? "—"}</TableCell>
-              <TableCell className="text-right">{r.openCapa ?? "—"}</TableCell>
               <TableCell className="text-right">{r.overdueCapa ?? "—"}</TableCell>
               <TableCell className="text-right">{r.criticalMajorFindings ?? "—"}</TableCell>
-              <TableCell className="text-right">
-                {r.dataCompletenessPct != null ? `${r.dataCompletenessPct.toFixed(0)}%` : "—"}
-              </TableCell>
               <TableCell>{assuranceStatusBadge(r.assuranceStatus)}</TableCell>
+              <TableCell className="text-right">
+                <details className="inline-block text-left">
+                  <summary className="text-primary cursor-pointer text-xs underline underline-offset-4 select-none">
+                    View details
+                  </summary>
+                  <dl className="bg-muted/30 mt-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-md p-2 text-xs whitespace-nowrap">
+                    <dt className="text-muted-foreground">Fatalities</dt>
+                    <dd className="text-right">{r.fatalities ?? "—"}</dd>
+                    <dt className="text-muted-foreground">Hospital referrals</dt>
+                    <dd className="text-right">{r.hospitalReferrals ?? "—"}</dd>
+                    <dt className="text-muted-foreground">OSH-reportable</dt>
+                    <dd className="text-right">{r.oshReportable ?? "—"}</dd>
+                    <dt className="text-muted-foreground">Open investigations</dt>
+                    <dd className="text-right">{r.openInvestigations ?? "—"}</dd>
+                    <dt className="text-muted-foreground">Open CAPA</dt>
+                    <dd className="text-right">{r.openCapa ?? "—"}</dd>
+                    <dt className="text-muted-foreground">Data completeness</dt>
+                    <dd className="text-right">
+                      {r.dataCompletenessPct != null
+                        ? `${r.dataCompletenessPct.toFixed(0)}%`
+                        : "—"}
+                    </dd>
+                  </dl>
+                </details>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -271,7 +326,10 @@ export function AssuranceHeatmapPanel({ rows }: { rows: HeatmapRow[] }) {
           <tr>
             <th className="text-left font-medium">Business Unit</th>
             {ASSURANCE_AREAS.map((a) => (
-              <th key={a.code} className="text-muted-foreground min-w-[64px] px-1 py-1 text-center font-medium">
+              <th
+                key={a.code}
+                className="text-muted-foreground min-w-[64px] px-1 py-1 text-center font-medium"
+              >
                 {a.label.split(" ")[0]}
               </th>
             ))}
@@ -297,7 +355,8 @@ export function AssuranceHeatmapPanel({ rows }: { rows: HeatmapRow[] }) {
       </table>
       <div className="text-muted-foreground mt-3 flex flex-wrap gap-4 text-xs">
         <span className="flex items-center gap-1">
-          <span className="bg-destructive/60 inline-block size-3 rounded" /> Significant exception
+          <span className="bg-destructive/60 inline-block size-3 rounded" /> Significant
+          exception
         </span>
         <span className="flex items-center gap-1">
           <span className="bg-warning/60 inline-block size-3 rounded" /> Management attention
@@ -350,14 +409,18 @@ export function SafetyPerformancePanel({ data }: { data: SafetyPerformanceData }
                 : "Not assessed"}
             </p>
             <span className="text-muted-foreground text-[11px]">
-              {result ? (formatDelta(result.currentValue, result.comparisonValue) ?? "—") : "—"}
+              {result
+                ? (formatDelta(result.currentValue, result.comparisonValue) ?? "—")
+                : "—"}
             </span>
           </CardContent>
         </Card>
       ))}
       <Card>
         <CardContent className="flex flex-col gap-1 p-3">
-          <p className="text-muted-foreground text-xs font-medium">Climate/weather-related events</p>
+          <p className="text-muted-foreground text-xs font-medium">
+            Climate/weather-related events
+          </p>
           <p className="text-xl font-semibold">{data.climateEventsCurrent}</p>
           <span className="text-muted-foreground text-[11px]">
             {data.climateEventsComparison} in comparison FY
@@ -384,7 +447,10 @@ export function DataQualityPanel({ rows }: { rows: DataQualityRow[] }) {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {withIssues.map((row) => (
-        <div key={row.label} className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm">
+        <div
+          key={row.label}
+          className="flex items-center justify-between gap-3 rounded-md border p-2 text-sm"
+        >
           <span>{row.label}</span>
           <div className="flex items-center gap-2">
             {row.sampleIncidentIds.length > 0 ? (
