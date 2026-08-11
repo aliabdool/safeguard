@@ -240,9 +240,11 @@ export async function computeOverallMaturity(
 ): Promise<{ readinessPct: number | null; ragStatus: RagStatus }> {
   const datastore = catalystApp.datastore();
 
+  // 300 is Catalyst ZCQL's own hard cap on LIMIT — see the identical note in
+  // server/dashboard/assurance-heatmap.ts.
   const controls = (await datastore
     .table("Controls")
-    .getRows({ maxRows: 500 })) as unknown as Array<{
+    .getRows({ maxRows: 300 })) as unknown as Array<{
     ROWID: string;
     is_life_safety_critical: string;
   }>;

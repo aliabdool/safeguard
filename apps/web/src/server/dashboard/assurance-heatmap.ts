@@ -80,9 +80,13 @@ export async function computeAssuranceHeatmap(
   const datastore = catalystApp.datastore();
   const zcql = catalystApp.zcql();
 
+  // 300 is Catalyst ZCQL's own hard cap on LIMIT (confirmed live: "ZCQL CANNOT HAVE MORE THAN 300
+  // ROWS in LIMIT" — a maxRows above it fails outright, it does not silently clamp). If the
+  // control library ever grows past 300 this will need real pagination via next_token; not
+  // expected at this app's current scale.
   const controls = (await datastore
     .table("Controls")
-    .getRows({ maxRows: 500 })) as unknown as ControlRow[];
+    .getRows({ maxRows: 300 })) as unknown as ControlRow[];
   const controlsByArea = new Map<AssuranceAreaCode, ControlRow[]>();
   for (const c of controls) {
     const area = mapControlCategoryToAssuranceArea(c.category);
