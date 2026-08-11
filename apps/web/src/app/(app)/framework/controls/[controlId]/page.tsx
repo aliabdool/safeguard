@@ -2,11 +2,25 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { AssessmentForm } from "./assessment-form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
-import { listDepartments, listProperties } from "@/server/identity/catalyst-identity";
+import { logDebugError } from "@/lib/debug-log";
 import { computeControlMaturity, maturityLabel } from "@/server/framework/maturity";
+import {
+  buildLatestScoresByPropertyDimension,
+  isValidControlId,
+  mapControlFrameworkMappings,
+  type FrameworkMappingSummary,
+  type RawAssessmentRow,
+  type RawMappingRow,
+} from "@/server/framework/control-detail";
+import {
+  listDepartments,
+  listProperties,
+  type ReferenceOption,
+} from "@/server/identity/catalyst-identity";
 
 interface ControlRow extends CatalystRow {
   control_code: string;
@@ -15,22 +29,10 @@ interface ControlRow extends CatalystRow {
   is_life_safety_critical: string;
 }
 
-interface MappingQueryRow {
-  Frameworks: { code: string; name: string };
-  FrameworkRequirements: { clause_reference: string | null };
-}
-
 interface LegalRow extends CatalystRow {
   citation: string;
   regulator: string;
   content_status: string;
-}
-
-interface AssessmentRow extends CatalystRow {
-  property_id: string;
-  dimension: string;
-  maturity_score: string;
-  assessed_at: string;
 }
 
 export default async function ControlDetailPage({
@@ -39,6 +41,10 @@ export default async function ControlDetailPage({
   params: Promise<{ controlId: string }>;
 }) {
   const { controlId } = await params;
+  if (!isValidControlId(controlId)) {
+    notFound();
+  }
+
   const catalystApp = catalystAppFromHeaders(await headers());
   const datastore = catalystApp.datastore();
 
@@ -51,47 +57,53 @@ export default async function ControlDetailPage({
     notFound();
   }
 
-  const [mappingRows, legal, assessmentRows, allProperties, allDepartments] = await Promise.all([
-    catalystApp.zcql().executeZCQLQuery(
-      `select Frameworks.code, Frameworks.name, FrameworkRequirements.clause_reference ` +
-        `from ControlFrameworkMappings ` +
-        `left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID ` +
-        `left join Frameworks on FrameworkRequirements.framework_id = Frameworks.ROWID ` +
-        `where ControlFrameworkMappings.control_id = '${controlId}'`,
-    ) as Promise<MappingQueryRow[]>,
-    datastore.table("LegalRequirementDetails").getRows({
-      criteria: `LegalRequirementDetails.control_id = '${controlId}'`,
-      maxRows: 1,
-    }) as Promise<LegalRow[]>,
-    datastore.table("ControlAssessments").getRows({
-      criteria: `ControlAssessments.control_id = '${controlId}'`,
-    }) as Promise<AssessmentRow[]>,
-    listProperties(catalystApp),
-    listDepartments(catalystApp),
-  ]);
+  // Secondary data (mappings/legal citation/assessment history/property+department lists for the
+  // assessment form) is wrapped separately from the control-existence check above so a genuine
+  // 404 (handled by notFound(), which relies on throwing a special Next.js error) is never
+  // swallowed by this catch — only failures in the secondary fetches degrade to a friendly notice
+  // instead of crashing the whole page (see chat: the release-blocking Server Components crash on
+  // this route, previously traced to an unguarded `m.Frameworks.code` against a dangling join).
+  let mappings: FrameworkMappingSummary[] = [];
+  let legal: LegalRow[] = [];
+  let latestByPropertyDimension = new Map<string, Map<string, number>>();
+  let allProperties: ReferenceOption[] = [];
+  let allDepartments: ReferenceOption[] = [];
+  let loadError = false;
 
-  const mappings = mappingRows.map((m) => ({
-    frameworkCode: m.Frameworks.code,
-    frameworkName: m.Frameworks.name,
-    clauseReference: m.FrameworkRequirements.clause_reference,
-  }));
-  const isLegal = mappings.some((m) => m.frameworkCode === "MU_LEGAL");
+  try {
+    const [mappingRows, legalRows, assessmentRows, properties, departments] =
+      await Promise.all([
+        catalystApp
+          .zcql()
+          .executeZCQLQuery(
+            `select Frameworks.code, Frameworks.name, FrameworkRequirements.clause_reference ` +
+              `from ControlFrameworkMappings ` +
+              `left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID ` +
+              `left join Frameworks on FrameworkRequirements.framework_id = Frameworks.ROWID ` +
+              `where ControlFrameworkMappings.control_id = '${controlId}'`,
+          ) as Promise<RawMappingRow[]>,
+        datastore.table("LegalRequirementDetails").getRows({
+          criteria: `LegalRequirementDetails.control_id = '${controlId}'`,
+          maxRows: 1,
+        }) as Promise<LegalRow[]>,
+        datastore.table("ControlAssessments").getRows({
+          criteria: `ControlAssessments.control_id = '${controlId}'`,
+        }) as unknown as Promise<RawAssessmentRow[]>,
+        listProperties(catalystApp),
+        listDepartments(catalystApp),
+      ]);
 
-  // "Latest" per (property, dimension) requires assessed_at descending order — getRows makes no
-  // ordering guarantee, so sort client-side before taking the first occurrence per dimension, the
-  // same convention used elsewhere in the migration (e.g. api-controls's getLatestDimensionScores).
-  const assessments = [...assessmentRows].sort((a, b) =>
-    a.assessed_at < b.assessed_at ? 1 : a.assessed_at > b.assessed_at ? -1 : 0,
-  );
-
-  const latestByPropertyDimension = new Map<string, Map<string, number>>();
-  for (const a of assessments) {
-    const propMap = latestByPropertyDimension.get(a.property_id) ?? new Map<string, number>();
-    if (!propMap.has(a.dimension)) {
-      propMap.set(a.dimension, Number(a.maturity_score));
-    }
-    latestByPropertyDimension.set(a.property_id, propMap);
+    mappings = mapControlFrameworkMappings(mappingRows);
+    legal = legalRows;
+    latestByPropertyDimension = buildLatestScoresByPropertyDimension(assessmentRows);
+    allProperties = properties;
+    allDepartments = departments;
+  } catch (err) {
+    logDebugError("CONTROL_DETAIL_DEBUG_ERROR:", err);
+    loadError = true;
   }
+
+  const isLegal = mappings.some((m) => m.frameworkCode === "MU_LEGAL");
   const propertyName = new Map(allProperties.map((p) => [p.id, p.name]));
 
   return (
@@ -108,6 +120,17 @@ export default async function ControlDetailPage({
           ) : null}
         </p>
       </div>
+
+      {loadError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Some details for this control could not be loaded</AlertTitle>
+          <AlertDescription>
+            Framework mappings, assessment history, and the assessment form below may be
+            incomplete or unavailable. Try refreshing the page; if this persists, it has been
+            logged for investigation.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -157,7 +180,9 @@ export default async function ControlDetailPage({
             );
           })}
           {latestByPropertyDimension.size === 0 ? (
-            <p className="text-muted-foreground">Not assessed yet.</p>
+            <p className="text-muted-foreground">
+              {loadError ? "Assessment history could not be loaded." : "Not assessed yet."}
+            </p>
           ) : null}
         </CardContent>
       </Card>
@@ -167,13 +192,20 @@ export default async function ControlDetailPage({
           <CardTitle className="text-base">Add / update assessment</CardTitle>
         </CardHeader>
         <CardContent>
-          <AssessmentForm
-            controlId={controlId}
-            properties={allProperties}
-            departments={allDepartments}
-            isLifeSafetyCritical={control.is_life_safety_critical === "true"}
-            isLegal={isLegal}
-          />
+          {loadError && allProperties.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              The assessment form is unavailable right now because the property/department list
+              could not be loaded. Refresh the page to try again.
+            </p>
+          ) : (
+            <AssessmentForm
+              controlId={controlId}
+              properties={allProperties}
+              departments={allDepartments}
+              isLifeSafetyCritical={control.is_life_safety_critical === "true"}
+              isLegal={isLegal}
+            />
+          )}
         </CardContent>
       </Card>
     </div>
