@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { logDebugError } from "@/lib/debug-log";
 import { computeAssuranceHeatmap } from "@/server/dashboard/assurance-heatmap";
 import type { HeatmapRow } from "@/server/dashboard/assurance-heatmap";
@@ -131,52 +132,52 @@ export default async function DashboardPage({
     const comparisonPeriodFull = previousFinancialYear(currentPeriod);
     const { comparisonEnd } = sameperiodYtdComparison(currentPeriod, comparisonPeriodFull, asOf);
 
-    let legalKpi, iso45001Kpi, gri403Kpi, ifrsS1Kpi, ifrsS2Kpi, highPotentialKpi, critMajorKpi;
-    [
-      managementAttention,
-      businessUnitRows,
-      frameworkReadiness,
-      overallMaturity,
-      heatmapRows,
-      safetyPerformance,
-      dataQuality,
-      legalKpi,
-      iso45001Kpi,
-      gri403Kpi,
-      ifrsS1Kpi,
-      ifrsS2Kpi,
-      highPotentialKpi,
-      critMajorKpi,
-    ] = await Promise.all([
-      computeManagementAttention(catalystApp, ctx, scope, propertyNameById),
-      computeBusinessUnitComparison(catalystApp, ctx, businessUnits, asOf),
-      computeAllFrameworkReadiness(catalystApp, scope, ctx),
-      computeOverallMaturity(catalystApp, scope, ctx),
-      computeAssuranceHeatmap(catalystApp, ctx, businessUnits, {
-        start: currentPeriod.start,
-        end: currentPeriod.end,
-        comparisonStart: comparisonPeriodFull.start,
-        comparisonEnd,
-      }),
-      computeSafetyPerformance(catalystApp, ctx, scope.propertyId, asOf),
-      computeDataQuality({
-        catalystApp,
-        ctx,
-        propertyId: scope.propertyId,
-        periodStart: currentPeriod.start,
-        periodEnd: asOf < currentPeriod.end ? asOf : currentPeriod.end,
-      }),
-      calculateKpi(catalystApp, ctx, "LEGAL_COMPLIANCE", { propertyId: scope.propertyId, asOf }),
-      calculateKpi(catalystApp, ctx, "ISO45001_READINESS", { propertyId: scope.propertyId, asOf }),
-      calculateKpi(catalystApp, ctx, "GRI403_READINESS", { propertyId: scope.propertyId, asOf }),
-      calculateKpi(catalystApp, ctx, "IFRS_S1_READINESS", { propertyId: scope.propertyId, asOf }),
-      calculateKpi(catalystApp, ctx, "IFRS_S2_READINESS", { propertyId: scope.propertyId, asOf }),
-      calculateKpi(catalystApp, ctx, "HIGH_POTENTIAL", { propertyId: scope.propertyId, asOf }),
-      calculateKpi(catalystApp, ctx, "OPEN_CRIT_MAJOR_FINDINGS", {
-        propertyId: scope.propertyId,
-        asOf,
-      }),
-    ]);
+    // Sequential, not Promise.all — confirmed live (see chat) that firing all of these at once,
+    // each of which independently issues its own burst of Catalyst queries (some already
+    // internally concurrency-limited, some not), sums past Catalyst's per-project concurrency cap
+    // and produces a 429 "Concurrency limit reached for the feature COMPONENT" that crashed this
+    // exact page in Development. A CEO dashboard is not a hot-path, high-frequency page — trading
+    // a few extra seconds of load time for zero 429s is the right tradeoff here, matching
+    // lib/concurrency.ts's own reasoning for why the original dashboard needed the same treatment.
+    managementAttention = await computeManagementAttention(catalystApp, ctx, scope, propertyNameById);
+    businessUnitRows = await computeBusinessUnitComparison(catalystApp, ctx, businessUnits, asOf);
+    frameworkReadiness = await computeAllFrameworkReadiness(catalystApp, scope, ctx);
+    overallMaturity = await computeOverallMaturity(catalystApp, scope, ctx);
+    heatmapRows = await computeAssuranceHeatmap(catalystApp, ctx, businessUnits, {
+      start: currentPeriod.start,
+      end: currentPeriod.end,
+      comparisonStart: comparisonPeriodFull.start,
+      comparisonEnd,
+    });
+    safetyPerformance = await computeSafetyPerformance(catalystApp, ctx, scope.propertyId, asOf);
+    dataQuality = await computeDataQuality({
+      catalystApp,
+      ctx,
+      propertyId: scope.propertyId,
+      periodStart: currentPeriod.start,
+      periodEnd: asOf < currentPeriod.end ? asOf : currentPeriod.end,
+    });
+
+    const execKpiCodes = [
+      "LEGAL_COMPLIANCE",
+      "ISO45001_READINESS",
+      "GRI403_READINESS",
+      "IFRS_S1_READINESS",
+      "IFRS_S2_READINESS",
+      "HIGH_POTENTIAL",
+      "OPEN_CRIT_MAJOR_FINDINGS",
+    ] as const;
+    const execKpiResults = await mapWithConcurrency([...execKpiCodes], 3, (code) =>
+      calculateKpi(catalystApp, ctx, code, { propertyId: scope.propertyId, asOf }),
+    );
+    const execKpiByCode = new Map(execKpiCodes.map((code, i) => [code, execKpiResults[i]!]));
+    const legalKpi = execKpiByCode.get("LEGAL_COMPLIANCE")!;
+    const iso45001Kpi = execKpiByCode.get("ISO45001_READINESS")!;
+    const gri403Kpi = execKpiByCode.get("GRI403_READINESS")!;
+    const ifrsS1Kpi = execKpiByCode.get("IFRS_S1_READINESS")!;
+    const ifrsS2Kpi = execKpiByCode.get("IFRS_S2_READINESS")!;
+    const highPotentialKpi = execKpiByCode.get("HIGH_POTENTIAL")!;
+    const critMajorKpi = execKpiByCode.get("OPEN_CRIT_MAJOR_FINDINGS")!;
 
     scopedRow =
       businessUnitRows.find(

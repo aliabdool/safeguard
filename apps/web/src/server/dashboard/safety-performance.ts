@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { calculateKpi, type KpiTileResult } from "@/server/kpi/calculate";
 import { countIncidentsInPeriod } from "@/server/kpi/calculations/incidents";
 import { financialYearFor, previousFinancialYear, sameperiodYtdComparison } from "@/server/kpi/period";
@@ -48,12 +49,14 @@ export async function computeSafetyPerformance(
   propertyId: string | null,
   asOf: Date,
 ): Promise<SafetyPerformanceData> {
-  const tiles = await Promise.all(
-    SAFETY_KPI_CODES.map(async (kpiCode) => ({
-      kpiCode,
-      result: await calculateKpi(catalystApp, ctx, kpiCode, { propertyId, asOf }),
-    })),
-  );
+  // mapWithConcurrency, not a raw Promise.all — Catalyst enforces a per-project concurrency limit
+  // (see lib/concurrency.ts's own doc comment: the original 18-tile dashboard tripped a 429
+  // "Concurrency limit reached for the feature COMPONENT" the same way; confirmed live again here
+  // — see chat).
+  const tiles = await mapWithConcurrency([...SAFETY_KPI_CODES], 3, async (kpiCode) => ({
+    kpiCode,
+    result: await calculateKpi(catalystApp, ctx, kpiCode, { propertyId, asOf }),
+  }));
 
   const { period: currentPeriod } = financialYearFor(asOf);
   const comparisonPeriodFull = previousFinancialYear(currentPeriod);
