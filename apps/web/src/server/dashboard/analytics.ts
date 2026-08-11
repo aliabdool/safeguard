@@ -146,6 +146,11 @@ export async function computeSafetyAnalytics(
   asOf: Date,
   departments: Array<{ id: string; name: string }>,
   historyDepth = 4,
+  breakdownLabels?: {
+    incidentType?: (v: string) => string;
+    outcome?: (v: string) => string;
+    personType?: (v: string) => string;
+  },
 ): Promise<SafetyAnalyticsData> {
   const { fyLabel: currentFyLabel, period: currentPeriod } = financialYearFor(asOf);
   const comparisonPeriod = previousFinancialYear(currentPeriod);
@@ -199,7 +204,7 @@ export async function computeSafetyAnalytics(
       departments,
     ),
     departmentFyHeatmap: computeDepartmentFyHeatmap(historyBuckets, departments),
-    breakdowns: computeCategoricalBreakdowns(currentRecords),
-    comparisonBreakdowns: computeCategoricalBreakdowns(comparisonRecords),
+    breakdowns: computeCategoricalBreakdowns(currentRecords, breakdownLabels),
+    comparisonBreakdowns: computeCategoricalBreakdowns(comparisonRecords, breakdownLabels),
   };
 }
