@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystRow } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { computeFrameworkRollup } from "@/server/framework/maturity";
 
 import { propertyScopeClause } from "../scope";
@@ -57,7 +58,7 @@ export async function frameworkReadinessKpi(
   const zcql = params.catalystApp.zcql();
 
   const frameworkRows = await datastore.table("Frameworks").getRows({
-    criteria: `Frameworks.code = '${frameworkCode}'`,
+    criteria: `Frameworks.code = ${zcqlString(frameworkCode)}`,
     maxRows: 1,
   });
   const framework = frameworkRows[0];
@@ -70,7 +71,7 @@ export async function frameworkReadinessKpi(
      from ControlFrameworkMappings
      left join Controls on ControlFrameworkMappings.control_id = Controls.ROWID
      left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID
-     where FrameworkRequirements.framework_id = '${framework.ROWID}'`,
+     where FrameworkRequirements.framework_id = ${zcqlString(framework.ROWID)}`,
   )) as ControlMappingRow[];
 
   if (mappingRows.length === 0) {
@@ -83,7 +84,7 @@ export async function frameworkReadinessKpi(
   const legalControlIds = new Set(legalRows.map((r) => r.control_id));
 
   const propClause = params.propertyId
-    ? `ControlAssessments.property_id = '${params.propertyId}'`
+    ? `ControlAssessments.property_id = ${zcqlString(params.propertyId)}`
     : propertyScopeClause("ControlAssessments.property_id", params.ctx);
   const assessmentRows = (await datastore.table("ControlAssessments").getRows({
     criteria: propClause,

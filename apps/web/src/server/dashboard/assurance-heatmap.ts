@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp, CatalystRow } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { computeFrameworkRollup } from "@/server/framework/maturity";
 import { capaEffectivenessRate } from "@/server/kpi/calculations/capa";
 import type { AuthContext } from "@/server/permissions";
@@ -110,7 +111,7 @@ export async function computeAssuranceHeatmap(
   const rows: HeatmapRow[] = [];
   for (const bu of businessUnits) {
     const assessmentRows = (await datastore.table("ControlAssessments").getRows({
-      criteria: `ControlAssessments.property_id = '${bu.id}'`,
+      criteria: `ControlAssessments.property_id = ${zcqlString(bu.id)}`,
     })) as AssessmentRow[];
 
     const cells: HeatmapCell[] = [];

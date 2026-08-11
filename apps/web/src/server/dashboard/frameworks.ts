@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp, CatalystRow } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { computeFrameworkRollup, maturityLabel } from "@/server/framework/maturity";
 import type { RagStatus } from "@/server/kpi/rag";
 import type { AuthContext } from "@/server/permissions";
@@ -104,7 +105,7 @@ async function computeFrameworkReadiness(
   const zcql = catalystApp.zcql();
 
   const frameworkRows = (await datastore.table("Frameworks").getRows({
-    criteria: `Frameworks.code = '${code}'`,
+    criteria: `Frameworks.code = ${zcqlString(code)}`,
     maxRows: 1,
   })) as Array<CatalystRow & { name: string }>;
   const framework = frameworkRows[0];
@@ -117,7 +118,7 @@ async function computeFrameworkReadiness(
      from ControlFrameworkMappings
      left join Controls on ControlFrameworkMappings.control_id = Controls.ROWID
      left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID
-     where FrameworkRequirements.framework_id = '${framework.ROWID}'`,
+     where FrameworkRequirements.framework_id = ${zcqlString(framework.ROWID)}`,
   )) as ControlMappingRow[];
 
   const incomplete: FrameworkReadinessRow = {
@@ -150,7 +151,7 @@ async function computeFrameworkReadiness(
 
   const propClause =
     scope.kind === "property"
-      ? `ControlAssessments.property_id = '${scope.propertyId}'`
+      ? `ControlAssessments.property_id = ${zcqlString(scope.propertyId)}`
       : groupScopeClause("ControlAssessments.property_id", ctx);
   const assessmentRows = (await datastore.table("ControlAssessments").getRows({
     criteria: propClause,
@@ -259,7 +260,7 @@ export async function computeOverallMaturity(
 
   const propClause =
     scope.kind === "property"
-      ? `ControlAssessments.property_id = '${scope.propertyId}'`
+      ? `ControlAssessments.property_id = ${zcqlString(scope.propertyId)}`
       : groupScopeClause("ControlAssessments.property_id", ctx);
   const assessmentRows = (await datastore.table("ControlAssessments").getRows({
     criteria: propClause,

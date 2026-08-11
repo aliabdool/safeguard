@@ -3,6 +3,7 @@ import "server-only";
 import { after } from "next/server";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import type { AuthContext } from "@/server/permissions";
 
@@ -125,7 +126,9 @@ export async function calculateKpi(
   const datastore = catalystApp.datastore();
 
   const definitionRows = (await datastore.table("KPIDefinitions").getRows({
-    criteria: `KPIDefinitions.kpi_code = '${kpiCode}'`,
+    // kpiCode is a URL path segment at some call sites (app/(app)/kpis/[kpiCode]/page.tsx) — user
+    // controlled, so it's escaped like every other value interpolated into ZCQL in this app.
+    criteria: `KPIDefinitions.kpi_code = ${zcqlString(kpiCode)}`,
     maxRows: 1,
   })) as unknown as KpiDefinitionRow[];
   const definition = definitionRows[0];

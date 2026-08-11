@@ -1,5 +1,6 @@
 import "server-only";
 
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { isAdmin, type AuthContext } from "@/server/permissions";
 
 /**
@@ -24,5 +25,5 @@ export function propertyScopeClause(column: string, ctx: AuthContext): string {
   if (ctx.propertyIds.length === 0) {
     return `${column} = '0'`;
   }
-  return `${column} in (${ctx.propertyIds.map((id) => `'${id}'`).join(",")})`;
+  return `${column} in (${ctx.propertyIds.map((id) => zcqlString(id)).join(",")})`;
 }

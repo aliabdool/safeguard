@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { countIncidentsInPeriod } from "@/server/kpi/calculations/incidents";
 import { calculateKpi, type KpiTileResult } from "@/server/kpi/calculate";
@@ -72,7 +73,7 @@ export async function computeSdgContribution(
   const assessmentIdsByControlId = new Map<string, string[]>();
   if (allRelevantControlIds.length > 0) {
     const assessmentRows = (await datastore.table("ControlAssessments").getRows({
-      criteria: `ControlAssessments.control_id in (${allRelevantControlIds.map((id) => `'${id}'`).join(",")})`,
+      criteria: `ControlAssessments.control_id in (${allRelevantControlIds.map((id) => zcqlString(id)).join(",")})`,
     })) as unknown as Array<{ ROWID: string; control_id: string }>;
     for (const a of assessmentRows) {
       assessedControlIds.add(a.control_id);
@@ -89,7 +90,7 @@ export async function computeSdgContribution(
     // class of column documented elsewhere in this app, e.g. IncidentOSHReportability.incident_id)
     // — resolved application-side rather than joined in ZCQL.
     const evidenceLinkRows = (await datastore.table("DocumentEvidenceLinks").getRows({
-      criteria: `DocumentEvidenceLinks.linked_entity_type = 'control_assessment' and DocumentEvidenceLinks.linked_entity_id in (${allAssessmentIds.map((id) => `'${id}'`).join(",")})`,
+      criteria: `DocumentEvidenceLinks.linked_entity_type = 'control_assessment' and DocumentEvidenceLinks.linked_entity_id in (${allAssessmentIds.map((id) => zcqlString(id)).join(",")})`,
     })) as unknown as Array<{ linked_entity_id: string }>;
     const assessmentIdsWithEvidence = new Set(evidenceLinkRows.map((l) => l.linked_entity_id));
     for (const [controlId, assessmentIds] of assessmentIdsByControlId) {
@@ -131,7 +132,7 @@ export async function computeSdgContribution(
     let climateIncidentsCurrent: number | null = null;
     if (def.number === 13) {
       const propClause = propertyId
-        ? `ClimateRisks.property_id = '${propertyId}'`
+        ? `ClimateRisks.property_id = ${zcqlString(propertyId)}`
         : propertyScopeClause("ClimateRisks.property_id", ctx);
       const climateRisks = (await datastore.table("ClimateRisks").getRows({
         criteria: propClause,

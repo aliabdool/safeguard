@@ -13,6 +13,7 @@ import {
   sumIncidentCostInPeriod,
 } from "./incidents";
 import { computeDataQuality } from "../../dashboard/data-quality";
+import { calculateKpi } from "../calculate";
 import type { KpiCalculationParams } from "../types";
 
 /**
@@ -169,6 +170,108 @@ describe.each(CONTEXTS)("generated ZCQL queries for %s", (_label, ctx) => {
     });
     expect(queries.length).toBeGreaterThan(0);
     queries.forEach((q, i) => assertZcqlSafe(q, `computeDataQuality query #${i}`));
+  });
+});
+
+// The suite above always drives propertyId/departmentId through the CTX-SCOPED branch
+// (baseParams hardcodes propertyId: null), so it never actually exercises the explicit
+// params.propertyId / params.departmentId branch each function also has — the exact branch that
+// carried the raw '${value}' interpolation bug class this ZCQL-safety audit fixed (see chat: the
+// CEO's "no user-controlled string may be concatenated raw into ZCQL" input-minimisation rule).
+// Every one of these values is now routed through zcqlString() at its call site; this block proves
+// that live for a representative cross-section of the audited functions using values a browser
+// could genuinely submit — a selected Business Unit/department whose id happens to contain a
+// quote, or a kpiCode/frameworkCode straight off a URL path segment — and additionally verifies
+// the escaped literal round-trips (the value isn't silently dropped or mangled), not just that it
+// fails to blow up the query syntax.
+describe("explicit propertyId/departmentId/kpiCode/frameworkCode are escaped, not just ctx-scoped values", () => {
+  const maliciousPropertyId = "prop' or '1'='1";
+  const maliciousDepartmentId = "dept' or '1'='1";
+  const maliciousKpiCode = "kpi' or '1'='1";
+  const maliciousFrameworkCode = "fw' or '1'='1";
+
+  it("countIncidentsInPeriod escapes an explicit propertyId and departmentId", async () => {
+    const { app, queries } = createRecordingCatalystApp([]);
+    await countIncidentsInPeriod({
+      ...baseParams(app, adminCtx),
+      propertyId: maliciousPropertyId,
+      departmentId: maliciousDepartmentId,
+    });
+    expect(queries.length).toBeGreaterThan(0);
+    queries.forEach((q, i) => {
+      assertZcqlSafe(q, `countIncidentsInPeriod (explicit scope) query #${i}`);
+      expect(q).toContain("prop'' or ''1''=''1");
+      expect(q).toContain("dept'' or ''1''=''1");
+    });
+  });
+
+  it("capaClosedOnTimeRate/capaEffectivenessRate escape an explicit propertyId and departmentId", async () => {
+    const { app, queries } = createRecordingCatalystApp([{ ROWID: "capa-1" }]);
+    await capaClosedOnTimeRate({
+      ...baseParams(app, adminCtx),
+      propertyId: maliciousPropertyId,
+      departmentId: maliciousDepartmentId,
+    });
+    await capaEffectivenessRate({
+      ...baseParams(app, adminCtx),
+      propertyId: maliciousPropertyId,
+      departmentId: maliciousDepartmentId,
+    });
+    expect(queries.length).toBeGreaterThan(0);
+    queries.forEach((q, i) => assertZcqlSafe(q, `capa query #${i}`));
+    // Only the CAPA property/department scope query carries these literals directly — the
+    // CAPAVerification follow-up query is scoped by resolved capa_id ROWIDs instead — so this
+    // checks that the escaped value appears somewhere in the sequence, not in every query.
+    expect(queries.some((q) => q.includes("prop'' or ''1''=''1"))).toBe(true);
+    expect(queries.some((q) => q.includes("dept'' or ''1''=''1"))).toBe(true);
+  });
+
+  it("countOpenCriticalMajorFindings escapes an explicit propertyId", async () => {
+    const { app, queries } = createRecordingCatalystApp([{ ROWID: "audit-1" }]);
+    await countOpenCriticalMajorFindings({
+      ...baseParams(app, adminCtx),
+      propertyId: maliciousPropertyId,
+    });
+    expect(queries.length).toBeGreaterThan(0);
+    queries.forEach((q, i) => assertZcqlSafe(q, `countOpenCriticalMajorFindings query #${i}`));
+    // Only the Audits scope query carries the propertyId directly — the AuditFindings follow-up
+    // is scoped by resolved audit_id ROWIDs instead.
+    expect(queries.some((q) => q.includes("prop'' or ''1''=''1"))).toBe(true);
+  });
+
+  it("frameworkReadinessKpi escapes both frameworkCode and an explicit propertyId", async () => {
+    const { app, queries } = createRecordingCatalystApp([{ ROWID: "1", code: maliciousFrameworkCode }]);
+    await frameworkReadinessKpi(maliciousFrameworkCode, {
+      ...baseParams(app, adminCtx),
+      propertyId: maliciousPropertyId,
+    });
+    expect(queries.length).toBeGreaterThan(0);
+    queries.forEach((q, i) => assertZcqlSafe(q, `frameworkReadinessKpi query #${i}`));
+    expect(queries[0]).toContain("fw'' or ''1''=''1");
+  });
+
+  it("computeDataQuality escapes an explicit propertyId", async () => {
+    const { app, queries } = createRecordingCatalystApp([]);
+    await computeDataQuality({
+      catalystApp: app,
+      ctx: adminCtx,
+      propertyId: maliciousPropertyId,
+      periodStart,
+      periodEnd,
+    });
+    expect(queries.length).toBeGreaterThan(0);
+    queries.forEach((q, i) => {
+      assertZcqlSafe(q, `computeDataQuality (explicit scope) query #${i}`);
+    });
+    expect(queries[0]).toContain("prop'' or ''1''=''1");
+  });
+
+  it("calculateKpi escapes a kpiCode taken straight from a URL path segment", async () => {
+    const { app, queries } = createRecordingCatalystApp([]);
+    await calculateKpi(app, adminCtx, maliciousKpiCode, {});
+    expect(queries.length).toBeGreaterThan(0);
+    assertZcqlSafe(queries[0]!, "calculateKpi KPIDefinitions lookup");
+    expect(queries[0]).toContain("kpi'' or ''1''=''1");
   });
 });
 

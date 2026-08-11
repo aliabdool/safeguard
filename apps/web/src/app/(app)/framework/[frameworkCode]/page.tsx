@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { computeFrameworkRollup, maturityLabel } from "@/server/framework/maturity";
 
 // Mirrors frameworkCodeEnum in apps/web/src/db/schema/_enums.ts.
@@ -64,7 +65,7 @@ export default async function FrameworkViewPage({
   const datastore = catalystApp.datastore();
 
   const frameworkRows = (await datastore.table("Frameworks").getRows({
-    criteria: `Frameworks.code = '${frameworkCode}'`,
+    criteria: `Frameworks.code = ${zcqlString(frameworkCode)}`,
     maxRows: 1,
   })) as FrameworkRow[];
   const framework = frameworkRows[0];
@@ -77,7 +78,7 @@ export default async function FrameworkViewPage({
       `from ControlFrameworkMappings ` +
       `left join Controls on ControlFrameworkMappings.control_id = Controls.ROWID ` +
       `left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID ` +
-      `where FrameworkRequirements.framework_id = '${framework.ROWID}'`,
+      `where FrameworkRequirements.framework_id = ${zcqlString(framework.ROWID)}`,
   )) as MappedControlQueryRow[];
 
   const mappedControls = mappedRows.map((r) => ({
@@ -92,7 +93,7 @@ export default async function FrameworkViewPage({
   if (mappedControls.length > 0) {
     const controlIds = mappedControls.map((c) => c.controlId);
     const allAssessments = (await datastore.table("ControlAssessments").getRows({
-      criteria: `ControlAssessments.control_id in (${controlIds.map((id) => `'${id}'`).join(", ")})`,
+      criteria: `ControlAssessments.control_id in (${controlIds.map((id) => zcqlString(id)).join(", ")})`,
     })) as AssessmentRow[];
     for (const a of allAssessments) {
       const list = assessmentsByControl.get(a.control_id) ?? [];

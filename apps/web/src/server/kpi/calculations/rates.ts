@@ -1,5 +1,6 @@
 import "server-only";
 
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 
 import { propertyScopeClause } from "../scope";
@@ -28,7 +29,7 @@ interface ExposureRow {
 
 function exposureScopeClause(params: KpiCalculationParams): string {
   return params.propertyId
-    ? `ExposureData.property_id = '${params.propertyId}'`
+    ? `ExposureData.property_id = ${zcqlString(params.propertyId)}`
     : propertyScopeClause("ExposureData.property_id", params.ctx);
 }
 
@@ -56,7 +57,7 @@ async function computeRate(
 ): Promise<KpiCalculationResult> {
   const datastore = params.catalystApp.datastore();
   const propClause = params.propertyId
-    ? `Incidents.property_id = '${params.propertyId}'`
+    ? `Incidents.property_id = ${zcqlString(params.propertyId)}`
     : propertyScopeClause("Incidents.property_id", params.ctx);
 
   async function numeratorFor(start: Date, end: Date) {

@@ -30,16 +30,17 @@ export interface BusinessUnit {
   incidentPrefix: string | null;
 }
 
-export interface DashboardScope {
-  /** "group" = the virtual Sunlife Group aggregate; "property" = one specific Business Unit. */
-  kind: "group" | "property";
-  /** Null for the Group scope — every KPI/data-quality calculation in this app already treats a
-   * null propertyId as "unconditional" for admin/EXECUTIVE_READONLY callers (propertyScopeClause,
-   * see server/kpi/scope.ts), and this dashboard is gated to exactly those roles, so reusing that
-   * existing null-propertyId path for the Group scope is correct here — not a new convention. */
-  propertyId: string | null;
-  label: string;
-}
+/**
+ * A real discriminated union (not `propertyId: string | null` unconditionally) so
+ * `scope.kind === "property"` narrows `scope.propertyId` to `string` at every call site that
+ * builds a ZCQL criteria clause from it — the previous shape let `propertyId` silently be `null`
+ * in the "property" branch (never happens at the one construction site below, but nothing enforced
+ * it), which a raw `'${scope.propertyId}'` template literal masked by just stringifying `null` to
+ * the literal text "null" instead of failing loudly.
+ */
+export type DashboardScope =
+  | { kind: "group"; propertyId: null; label: string }
+  | { kind: "property"; propertyId: string; label: string };
 
 /**
  * Loads the 6 operating Business Units (Properties.is_active rows) and resolves the requested

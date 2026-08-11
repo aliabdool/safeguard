@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp, CatalystRow } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
@@ -59,7 +60,7 @@ async function countOpenInvestigations(
 ): Promise<number> {
   const datastore = catalystApp.datastore();
   const incidentRows = (await datastore.table("Incidents").getRows({
-    criteria: `Incidents.property_id = '${propertyId}'`,
+    criteria: `Incidents.property_id = ${zcqlString(propertyId)}`,
   })) as unknown as Array<{ ROWID: string }>;
   if (incidentRows.length === 0) return 0;
   const incidentIds = incidentRows.map((r) => r.ROWID);
@@ -68,7 +69,7 @@ async function countOpenInvestigations(
   // data-quality.ts) — resolve in-scope incident ROWIDs first and filter application-side rather
   // than risk a ZCQL join on a column that may not actually be a relationship.
   const investigationRows = (await datastore.table("IncidentInvestigation").getRows({
-    criteria: `IncidentInvestigation.incident_id in (${incidentIds.map((id) => `'${id}'`).join(",")}) and IncidentInvestigation.status not in ('completed','approved')`,
+    criteria: `IncidentInvestigation.incident_id in (${incidentIds.map((id) => zcqlString(id)).join(",")}) and IncidentInvestigation.status not in ('completed','approved')`,
   })) as InvestigationRow[];
   return investigationRows.length;
 }
@@ -79,7 +80,7 @@ async function countCapa(
 ): Promise<{ open: number; overdue: number }> {
   const today = toZcqlDateTime(new Date()).slice(0, 10);
   const rows = (await catalystApp.datastore().table("CAPA").getRows({
-    criteria: `CAPA.property_id = '${propertyId}' and CAPA.status not in ('closed','verified')`,
+    criteria: `CAPA.property_id = ${zcqlString(propertyId)} and CAPA.status not in ('closed','verified')`,
   })) as CapaCountRow[];
   const overdue = rows.filter((r) => r.due_date < today).length;
   return { open: rows.length, overdue };

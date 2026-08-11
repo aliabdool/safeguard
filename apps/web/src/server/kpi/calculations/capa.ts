@@ -1,5 +1,6 @@
 import "server-only";
 
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 
 import { propertyScopeClause } from "../scope";
@@ -15,9 +16,11 @@ interface CapaRow {
 
 function capaScopeClause(params: KpiCalculationParams, table = "CAPA"): string {
   const propClause = params.propertyId
-    ? `${table}.property_id = '${params.propertyId}'`
+    ? `${table}.property_id = ${zcqlString(params.propertyId)}`
     : propertyScopeClause(`${table}.property_id`, params.ctx);
-  const deptClause = params.departmentId ? ` and ${table}.department_id = '${params.departmentId}'` : "";
+  const deptClause = params.departmentId
+    ? ` and ${table}.department_id = ${zcqlString(params.departmentId)}`
+    : "";
   return `${propClause}${deptClause}`;
 }
 
@@ -80,7 +83,7 @@ export async function capaEffectivenessRate(
       return { value: null as number | null, ids: [] as string[] };
     }
     const verifications = (await datastore.table("CAPAVerification").getRows({
-      criteria: `CAPAVerification.capa_id in (${capaIds.map((id) => `'${id}'`).join(",")}) and CAPAVerification.verified_at >= '${toZcqlDateTime(start)}' and CAPAVerification.verified_at <= '${toZcqlDateTime(end)}'`,
+      criteria: `CAPAVerification.capa_id in (${capaIds.map((id) => zcqlString(id)).join(",")}) and CAPAVerification.verified_at >= '${toZcqlDateTime(start)}' and CAPAVerification.verified_at <= '${toZcqlDateTime(end)}'`,
     })) as unknown as Array<{ ROWID: string; outcome: string }>;
     if (verifications.length === 0) {
       return { value: null as number | null, ids: [] as string[] };

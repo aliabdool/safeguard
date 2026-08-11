@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { propertyScopeClause } from "@/server/kpi/scope";
 import type { AuthContext } from "@/server/permissions";
@@ -36,7 +37,7 @@ export async function computeDataQuality(params: {
   const datastore = catalystApp.datastore();
 
   const incidentScope = propertyId
-    ? `Incidents.property_id = '${propertyId}'`
+    ? `Incidents.property_id = ${zcqlString(propertyId)}`
     : propertyScopeClause("Incidents.property_id", ctx);
   const periodClause = `Incidents.occurred_at >= '${toZcqlDateTime(periodStart)}' and Incidents.occurred_at <= '${toZcqlDateTime(periodEnd)}'`;
 
@@ -89,7 +90,7 @@ export async function computeDataQuality(params: {
   let missingAffectedPersonIds: string[] = [];
   if (injuryOutcomeIncidents.length > 0) {
     const personRows = (await datastore.table("IncidentPersons").getRows({
-      criteria: `IncidentPersons.incident_id in (${injuryOutcomeIncidents.map((i) => `'${i.ROWID}'`).join(",")})`,
+      criteria: `IncidentPersons.incident_id in (${injuryOutcomeIncidents.map((i) => zcqlString(i.ROWID)).join(",")})`,
     })) as unknown as Array<{ incident_id: string }>;
     const incidentIdsWithPersons = new Set(personRows.map((r) => r.incident_id));
     missingAffectedPersonIds = injuryOutcomeIncidents
@@ -105,7 +106,7 @@ export async function computeDataQuality(params: {
   let pendingReportableIds: string[] = [];
   if (pendingReportableIncidentIds.size > 0) {
     const pendingReportableRows = (await datastore.table("IncidentOSHReportability").getRows({
-      criteria: `IncidentOSHReportability.incident_id in (${[...pendingReportableIncidentIds].map((id) => `'${id}'`).join(",")}) and IncidentOSHReportability.reportable_status = 'pending_determination'`,
+      criteria: `IncidentOSHReportability.incident_id in (${[...pendingReportableIncidentIds].map((id) => zcqlString(id)).join(",")}) and IncidentOSHReportability.reportable_status = 'pending_determination'`,
     })) as unknown as Array<{ incident_id: string }>;
     pendingReportableIds = pendingReportableRows.map((r) => r.incident_id);
   }
@@ -114,7 +115,7 @@ export async function computeDataQuality(params: {
   let overdueInvestigationIds: string[] = [];
   if (needingInvestigation.length > 0) {
     const investigationRows = (await datastore.table("IncidentInvestigation").getRows({
-      criteria: `IncidentInvestigation.incident_id in (${needingInvestigation.map((i) => `'${i.ROWID}'`).join(",")}) and IncidentInvestigation.status not in ('completed','approved')`,
+      criteria: `IncidentInvestigation.incident_id in (${needingInvestigation.map((i) => zcqlString(i.ROWID)).join(",")}) and IncidentInvestigation.status not in ('completed','approved')`,
     })) as unknown as Array<{ incident_id: string; assigned_at: string }>;
     const fourteenDaysAgo = toZcqlDateTime(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000));
     overdueInvestigationIds = investigationRows
@@ -123,7 +124,7 @@ export async function computeDataQuality(params: {
   }
 
   const capaScope = propertyId
-    ? `CAPA.property_id = '${propertyId}'`
+    ? `CAPA.property_id = ${zcqlString(propertyId)}`
     : propertyScopeClause("CAPA.property_id", ctx);
   const today = toZcqlDateTime(new Date()).slice(0, 10);
   const allCapaRows = (await datastore.table("CAPA").getRows({
@@ -149,7 +150,7 @@ export async function computeDataQuality(params: {
   let missingEffectivenessReviewIds: string[] = [];
   if (closedOrVerifiedCapaIds.length > 0) {
     const verificationRows = (await datastore.table("CAPAVerification").getRows({
-      criteria: `CAPAVerification.capa_id in (${closedOrVerifiedCapaIds.map((id) => `'${id}'`).join(",")})`,
+      criteria: `CAPAVerification.capa_id in (${closedOrVerifiedCapaIds.map((id) => zcqlString(id)).join(",")})`,
     })) as unknown as Array<{ capa_id: string }>;
     const verifiedCapaIds = new Set(verificationRows.map((r) => r.capa_id));
     missingEffectivenessReviewIds = closedOrVerifiedCapaIds.filter((id) => !verifiedCapaIds.has(id));

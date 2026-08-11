@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp, CatalystRow } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import type { AuthContext } from "@/server/permissions";
 
@@ -57,7 +58,7 @@ export async function computeManagementAttention(
   const datastore = catalystApp.datastore();
   const propClause =
     scope.kind === "property"
-      ? `Incidents.property_id = '${scope.propertyId}'`
+      ? `Incidents.property_id = ${zcqlString(scope.propertyId)}`
       : groupScopeClause("Incidents.property_id", ctx);
 
   const items: ManagementAttentionItem[] = [];
@@ -99,7 +100,7 @@ export async function computeManagementAttention(
   // Overdue critical-priority CAPA actions.
   const capaPropClause =
     scope.kind === "property"
-      ? `CAPA.property_id = '${scope.propertyId}'`
+      ? `CAPA.property_id = ${zcqlString(scope.propertyId)}`
       : groupScopeClause("CAPA.property_id", ctx);
   const today = toZcqlDateTime(new Date()).slice(0, 10);
   const criticalCapaRows = (await datastore.table("CAPA").getRows({
@@ -123,7 +124,7 @@ export async function computeManagementAttention(
   // no property_id of its own), matching the same pattern as OPEN_CRIT_MAJOR_FINDINGS's own KPI.
   const auditPropClause =
     scope.kind === "property"
-      ? `Audits.property_id = '${scope.propertyId}'`
+      ? `Audits.property_id = ${zcqlString(scope.propertyId)}`
       : groupScopeClause("Audits.property_id", ctx);
   const scopedAudits = (await datastore.table("Audits").getRows({
     criteria: auditPropClause,
@@ -132,7 +133,7 @@ export async function computeManagementAttention(
     const auditIds = scopedAudits.map((a) => a.ROWID);
     const auditPropertyByAuditId = new Map(scopedAudits.map((a) => [a.ROWID, a.property_id]));
     const findingRows = (await datastore.table("AuditFindings").getRows({
-      criteria: `AuditFindings.audit_id in (${auditIds.map((id) => `'${id}'`).join(",")}) and AuditFindings.classification = 'critical_nc' and AuditFindings.status != 'closed'`,
+      criteria: `AuditFindings.audit_id in (${auditIds.map((id) => zcqlString(id)).join(",")}) and AuditFindings.classification = 'critical_nc' and AuditFindings.status != 'closed'`,
     })) as unknown as Array<FindingRow & { audit_id: string }>;
     for (const f of findingRows) {
       const buId = auditPropertyByAuditId.get(f.audit_id);
@@ -144,7 +145,7 @@ export async function computeManagementAttention(
       });
     }
     const majorFindingRows = (await datastore.table("AuditFindings").getRows({
-      criteria: `AuditFindings.audit_id in (${auditIds.map((id) => `'${id}'`).join(",")}) and AuditFindings.classification = 'major_nc' and AuditFindings.status != 'closed'`,
+      criteria: `AuditFindings.audit_id in (${auditIds.map((id) => zcqlString(id)).join(",")}) and AuditFindings.classification = 'major_nc' and AuditFindings.status != 'closed'`,
     })) as unknown as Array<FindingRow & { audit_id: string }>;
     for (const f of majorFindingRows) {
       const buId = auditPropertyByAuditId.get(f.audit_id);

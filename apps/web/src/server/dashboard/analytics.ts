@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CatalystApp } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 import { RECORDABLE_OUTCOMES } from "@/server/kpi/calculations/incidents";
 import { financialYearFor, previousFinancialYear, type Period } from "@/server/kpi/period";
@@ -50,10 +51,12 @@ export interface AnalyticsFilters {
 
 function extraFilterClause(filters: AnalyticsFilters): string {
   const parts: string[] = [];
-  if (filters.departmentId) parts.push(`Incidents.department_id = '${filters.departmentId}'`);
-  if (filters.incidentType) parts.push(`Incidents.incident_type = '${filters.incidentType}'`);
+  if (filters.departmentId) {
+    parts.push(`Incidents.department_id = ${zcqlString(filters.departmentId)}`);
+  }
+  if (filters.incidentType) parts.push(`Incidents.incident_type = ${zcqlString(filters.incidentType)}`);
   if (filters.personEventType) {
-    parts.push(`Incidents.person_event_type = '${filters.personEventType}'`);
+    parts.push(`Incidents.person_event_type = ${zcqlString(filters.personEventType)}`);
   }
   return parts.length > 0 ? ` and ${parts.join(" and ")}` : "";
 }
@@ -73,7 +76,7 @@ async function resolveOshReportableIds(
     .datastore()
     .table("IncidentOSHReportability")
     .getRows({
-      criteria: `IncidentOSHReportability.incident_id in (${incidentIds.map((id) => `'${id}'`).join(",")}) and IncidentOSHReportability.reportable_status = 'yes'`,
+      criteria: `IncidentOSHReportability.incident_id in (${incidentIds.map((id) => zcqlString(id)).join(",")}) and IncidentOSHReportability.reportable_status = 'yes'`,
     })) as unknown as Array<{ incident_id: string }>;
   return new Set(rows.map((r) => r.incident_id));
 }
@@ -92,7 +95,7 @@ export async function fetchIncidentAnalyticsRecords(
 ): Promise<IncidentAnalyticsRecord[]> {
   const datastore = catalystApp.datastore();
   const propClause = filters.propertyId
-    ? `Incidents.property_id = '${filters.propertyId}'`
+    ? `Incidents.property_id = ${zcqlString(filters.propertyId)}`
     : propertyScopeClause("Incidents.property_id", ctx);
   const extra = extraFilterClause(filters);
 

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { catalystAdminApp, type CatalystApp, type CatalystRow } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { computeDataQuality } from "@/server/dashboard/data-quality";
 import { calculateKpi, type KpiTileResult } from "@/server/kpi/calculate";
@@ -54,7 +55,7 @@ async function scopeMeta(catalystApp: CatalystApp, propertyId: string | null, as
   let propertyLabel = "All accessible properties";
   if (propertyId) {
     const rows = (await catalystApp.datastore().table("Properties").getRows({
-      criteria: `Properties.ROWID = '${propertyId}'`,
+      criteria: `Properties.ROWID = ${zcqlString(propertyId)}`,
       maxRows: 1,
     })) as Array<CatalystRow & { name: string }>;
     propertyLabel = rows[0]?.name ?? propertyLabel;
@@ -127,7 +128,7 @@ export async function gatherAssurancePackInput(
   // undefined`. Not a new gap introduced by this migration, just preserved as-is.
   // No "as n" alias: confirmed live (see chat) that ZCQL aggregate results — including
   // count(distinct ...) — are keyed by the column name INSIDE the function, not the SQL alias.
-  const gapScope = propertyId ? `CriticalGaps.property_id = '${propertyId}' and ` : "";
+  const gapScope = propertyId ? `CriticalGaps.property_id = ${zcqlString(propertyId)} and ` : "";
   const gapRows = (await zcql.executeZCQLQuery(
     `select count(distinct CriticalGaps.control_id) from CriticalGaps where ${gapScope}CriticalGaps.resolved_at is null`,
   )) as Array<{ CriticalGaps: { control_id: string } }>;
@@ -140,7 +141,7 @@ export async function gatherAssurancePackInput(
   let findingAuditIds: string[] | null = null;
   if (propertyId) {
     const scopedAuditRows = (await catalystApp.datastore().table("Audits").getRows({
-      criteria: `Audits.property_id = '${propertyId}'`,
+      criteria: `Audits.property_id = ${zcqlString(propertyId)}`,
     })) as unknown as Array<{ ROWID: string }>;
     findingAuditIds = scopedAuditRows.map((a) => a.ROWID);
   }
@@ -148,7 +149,7 @@ export async function gatherAssurancePackInput(
   const openFindings: OpenFindingRow[] = [];
   if (!findingAuditIds || findingAuditIds.length > 0) {
     const auditIdClause = findingAuditIds
-      ? `AuditFindings.audit_id in (${findingAuditIds.map((id) => `'${id}'`).join(",")}) and `
+      ? `AuditFindings.audit_id in (${findingAuditIds.map((id) => zcqlString(id)).join(",")}) and `
       : "";
     const findingRows = (await catalystApp.datastore().table("AuditFindings").getRows({
       criteria: `${auditIdClause}AuditFindings.classification in ('critical_nc','major_nc') and AuditFindings.status != 'closed'`,
@@ -163,7 +164,7 @@ export async function gatherAssurancePackInput(
     const controlRows =
       controlIds.length > 0
         ? ((await catalystApp.datastore().table("Controls").getRows({
-            criteria: `Controls.ROWID in (${controlIds.map((id) => `'${id}'`).join(",")})`,
+            criteria: `Controls.ROWID in (${controlIds.map((id) => zcqlString(id)).join(",")})`,
           })) as unknown as Array<{ ROWID: string; control_code: string }>)
         : [];
     const controlCodeById = new Map(controlRows.map((c) => [c.ROWID, c.control_code]));
@@ -178,7 +179,7 @@ export async function gatherAssurancePackInput(
     );
   }
 
-  const capaScope = propertyId ? ` where CAPA.property_id = '${propertyId}'` : "";
+  const capaScope = propertyId ? ` where CAPA.property_id = ${zcqlString(propertyId)}` : "";
   const capaRows = (await zcql.executeZCQLQuery(
     `select CAPA.status, count(CAPA.ROWID) from CAPA${capaScope} group by CAPA.status`,
   )) as Array<{ CAPA: { status: string; ROWID: string } }>;

@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { catalystAppFromHeaders } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { calculateKpi } from "@/server/kpi/calculate";
 import { getAuthContext, hasPropertyAccess } from "@/server/permissions";
 
@@ -53,7 +54,9 @@ export default async function KpiDetailPage({
   const zcql = catalystApp.zcql();
 
   const definitionRows = (await datastore.table("KPIDefinitions").getRows({
-    criteria: `KPIDefinitions.kpi_code = '${kpiCode}'`,
+    // kpiCode is a raw URL path segment (no allowlist check before this point) — escaped like
+    // every other value interpolated into ZCQL in this app.
+    criteria: `KPIDefinitions.kpi_code = ${zcqlString(kpiCode)}`,
     maxRows: 1,
   })) as unknown as KpiDefinitionRow[];
   const definition = definitionRows[0];
@@ -71,7 +74,7 @@ export default async function KpiDetailPage({
   const snapshotRows = (await zcql.executeZCQLQuery(
     `select KPISnapshots.current_value, KPISnapshots.comparison_value,
             KPISnapshots.data_quality_status, KPISnapshots.calculated_at
-     from KPISnapshots where KPISnapshots.kpi_code = '${kpiCode}'
+     from KPISnapshots where KPISnapshots.kpi_code = ${zcqlString(kpiCode)}
      order by KPISnapshots.calculated_at desc limit 5`,
   )) as Array<{ KPISnapshots: KpiSnapshotRow }>;
   const recentSnapshots = snapshotRows.map((r) => r.KPISnapshots);

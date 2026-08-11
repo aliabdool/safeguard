@@ -1,5 +1,7 @@
 import "server-only";
 
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
+
 import { propertyScopeClause } from "../scope";
 import type { KpiCalculationParams, KpiCalculationResult } from "../types";
 
@@ -17,7 +19,7 @@ export async function countOpenCriticalMajorFindings(
 ): Promise<KpiCalculationResult> {
   const datastore = params.catalystApp.datastore();
   const propClause = params.propertyId
-    ? `Audits.property_id = '${params.propertyId}'`
+    ? `Audits.property_id = ${zcqlString(params.propertyId)}`
     : propertyScopeClause("Audits.property_id", params.ctx);
 
   const scopedAuditRows = (await datastore.table("Audits").getRows({
@@ -36,7 +38,7 @@ export async function countOpenCriticalMajorFindings(
   }
 
   const rows = (await datastore.table("AuditFindings").getRows({
-    criteria: `AuditFindings.audit_id in (${auditIds.map((id) => `'${id}'`).join(",")}) and AuditFindings.classification in ('critical_nc','major_nc') and AuditFindings.status in ('open','action_assigned','verified')`,
+    criteria: `AuditFindings.audit_id in (${auditIds.map((id) => zcqlString(id)).join(",")}) and AuditFindings.classification in ('critical_nc','major_nc') and AuditFindings.status in ('open','action_assigned','verified')`,
   })) as unknown as Array<{ ROWID: string }>;
 
   return {

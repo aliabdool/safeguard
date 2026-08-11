@@ -1,5 +1,6 @@
 import "server-only";
 
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
 
 import { propertyScopeClause } from "../scope";
@@ -27,10 +28,10 @@ interface IncidentSumRow {
 /** Builds the shared property/department criteria fragment for an Incidents query. */
 function incidentScopeClause(params: KpiCalculationParams): { propClause: string; deptClause: string } {
   const propClause = params.propertyId
-    ? `Incidents.property_id = '${params.propertyId}'`
+    ? `Incidents.property_id = ${zcqlString(params.propertyId)}`
     : propertyScopeClause("Incidents.property_id", params.ctx);
   const deptClause = params.departmentId
-    ? ` and Incidents.department_id = '${params.departmentId}'`
+    ? ` and Incidents.department_id = ${zcqlString(params.departmentId)}`
     : "";
   return { propClause, deptClause };
 }
@@ -101,7 +102,7 @@ export async function countReportableOshCasesInPeriod(
     const incidentIds = incidentRows.map((r) => r.ROWID);
     if (incidentIds.length === 0) return [];
     const reportableRows = (await datastore.table("IncidentOSHReportability").getRows({
-      criteria: `IncidentOSHReportability.incident_id in (${incidentIds.map((id) => `'${id}'`).join(",")}) and IncidentOSHReportability.reportable_status = 'yes'`,
+      criteria: `IncidentOSHReportability.incident_id in (${incidentIds.map((id) => zcqlString(id)).join(",")}) and IncidentOSHReportability.reportable_status = 'yes'`,
     })) as unknown as Array<{ incident_id: string }>;
     return reportableRows.map((r) => r.incident_id);
   }
