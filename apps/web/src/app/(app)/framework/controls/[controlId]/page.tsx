@@ -200,10 +200,17 @@ export default async function ControlDetailPage({
           ) : (
             <AssessmentForm
               controlId={controlId}
+              control={{ title: control.title, category: control.category }}
               properties={allProperties}
               departments={allDepartments}
               isLifeSafetyCritical={control.is_life_safety_critical === "true"}
               isLegal={isLegal}
+              existingScoresByProperty={Object.fromEntries(
+                [...latestByPropertyDimension.entries()].map(([propertyId, dims]) => [
+                  propertyId,
+                  Object.fromEntries(dims),
+                ]),
+              )}
             />
           )}
         </CardContent>
