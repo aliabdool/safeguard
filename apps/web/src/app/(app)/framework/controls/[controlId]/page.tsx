@@ -7,7 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { logDebugError } from "@/lib/debug-log";
-import { computeControlMaturity, maturityLabel } from "@/server/framework/maturity";
+import { DataStateBadge } from "@/components/data-state-badge";
+import { deriveControlDataState } from "@/server/dashboard/data-states";
+import {
+  computeControlMaturity,
+  isCriticalGap,
+  maturityLabel,
+} from "@/server/framework/maturity";
 import {
   buildLatestScoresByPropertyDimension,
   isValidControlId,
@@ -160,18 +166,33 @@ export default async function ControlDetailPage({
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
           {[...latestByPropertyDimension.entries()].map(([propertyId, dims]) => {
-            const overall = computeControlMaturity({
+            const scores = {
               policy: dims.get("policy"),
               procedure: dims.get("procedure"),
               implementation: dims.get("implementation"),
               effectiveness: dims.get("effectiveness"),
+            };
+            const overall = computeControlMaturity(scores);
+            const criticalGap = isCriticalGap({
+              isLifeSafetyCritical: control.is_life_safety_critical === "true",
+              isLegal,
+              scores,
+            });
+            // hasEvidenceLinked: true — evidence-linkage isn't evaluated at this per-property
+            // granularity (would need a further live query per property), so this call site
+            // deliberately doesn't distinguish "requires_improvement" from "evidence_incomplete"
+            // rather than guessing at a value it doesn't have.
+            const dataState = deriveControlDataState({
+              applicability: "applicable",
+              hasAssessment: overall != null,
+              rollupScore: overall,
+              hasEvidenceLinked: true,
+              isCriticalGap: criticalGap,
             });
             return (
               <div key={propertyId} className="flex items-center gap-2">
                 <span className="w-40">{propertyName.get(propertyId)}</span>
-                <Badge variant={overall != null && overall <= 1 ? "destructive" : "secondary"}>
-                  {maturityLabel(overall)}
-                </Badge>
+                <DataStateBadge state={dataState} label={maturityLabel(overall)} />
                 <span className="text-muted-foreground text-xs">
                   P:{dims.get("policy") ?? "–"} Pr:{dims.get("procedure") ?? "–"} I:
                   {dims.get("implementation") ?? "–"} E:{dims.get("effectiveness") ?? "–"}
