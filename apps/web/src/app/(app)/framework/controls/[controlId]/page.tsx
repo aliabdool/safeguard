@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
+import { zcqlString } from "@/lib/catalyst/zcql-escape";
 import { logDebugError } from "@/lib/debug-log";
 import { DataStateBadge } from "@/components/data-state-badge";
 import { deriveControlDataState } from "@/server/dashboard/data-states";
@@ -27,6 +28,7 @@ import {
   listProperties,
   type ReferenceOption,
 } from "@/server/identity/catalyst-identity";
+import { recentFinancialYears } from "@/server/kpi/period";
 
 interface ControlRow extends CatalystRow {
   control_code: string;
@@ -55,7 +57,7 @@ export default async function ControlDetailPage({
   const datastore = catalystApp.datastore();
 
   const controlRows = (await datastore.table("Controls").getRows({
-    criteria: `Controls.ROWID = '${controlId}'`,
+    criteria: `Controls.ROWID = ${zcqlString(controlId)}`,
     maxRows: 1,
   })) as ControlRow[];
   const control = controlRows[0];
@@ -86,14 +88,14 @@ export default async function ControlDetailPage({
               `from ControlFrameworkMappings ` +
               `left join FrameworkRequirements on ControlFrameworkMappings.framework_requirement_id = FrameworkRequirements.ROWID ` +
               `left join Frameworks on FrameworkRequirements.framework_id = Frameworks.ROWID ` +
-              `where ControlFrameworkMappings.control_id = '${controlId}'`,
+              `where ControlFrameworkMappings.control_id = ${zcqlString(controlId)}`,
           ) as Promise<RawMappingRow[]>,
         datastore.table("LegalRequirementDetails").getRows({
-          criteria: `LegalRequirementDetails.control_id = '${controlId}'`,
+          criteria: `LegalRequirementDetails.control_id = ${zcqlString(controlId)}`,
           maxRows: 1,
         }) as Promise<LegalRow[]>,
         datastore.table("ControlAssessments").getRows({
-          criteria: `ControlAssessments.control_id = '${controlId}'`,
+          criteria: `ControlAssessments.control_id = ${zcqlString(controlId)}`,
         }) as unknown as Promise<RawAssessmentRow[]>,
         listProperties(catalystApp),
         listDepartments(catalystApp),
@@ -226,6 +228,7 @@ export default async function ControlDetailPage({
               departments={allDepartments}
               isLifeSafetyCritical={control.is_life_safety_critical === "true"}
               isLegal={isLegal}
+              financialYears={recentFinancialYears(new Date()).map((fy) => fy.label)}
               existingScoresByProperty={Object.fromEntries(
                 [...latestByPropertyDimension.entries()].map(([propertyId, dims]) => [
                   propertyId,

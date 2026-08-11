@@ -13,18 +13,22 @@ import {
 
 /**
  * ============================================================================================
- * NOT WIRED TO ANY ROUTE, ACTION, OR CRON JOB. Do not call runFinancialYearAndPrefixBackfill()
- * with dryRun: false against live data.
- *
- * Per explicit instruction (see chat): this backfill must not execute until Catalyst access has
- * returned, a dry run has been reviewed, and execution has been explicitly approved. When that
- * happens, the live sequence is: (1) live AppSail log inspection is unrelated/already done,
- * (2) live historical-data gap analysis/quantification, (3) run this function with dryRun: true
- * and review the returned plan, (4) only after approval, run again with dryRun: false.
+ * NOT WIRED TO ANY ROUTE, ACTION, OR CRON JOB — a one-off maintenance script only, called
+ * directly, not something end users or a scheduled job can trigger. Any future dryRun: false
+ * call against live data still needs the same explicit approval this one got (see chat: executed
+ * once, 2026-08-11, against the 8 pre-migration demo rows on the live Development project;
+ * verified idempotent by an immediate dryRun: true re-run reporting 0 further changes).
  *
  * Scope is deliberately narrow: Incidents.financial_year and Incidents.incident_prefix only.
  * Incidents.incident_number and Incidents.incident_sequence are never read for planning purposes
  * and never written here — see backfill.ts's own doc comment for why.
+ *
+ * This backfill is for data consistency/auditability and the incident-numbering allocator
+ * (number.ts, which filters by incident_prefix) — NOT a prerequisite for KPI/CEO dashboard
+ * reporting. Every dashboard/KPI aggregate in this app is computed from Incidents.occurred_at,
+ * property_id, and department_id (see kpi/calculations/incidents.ts, dashboard/business-units.ts),
+ * which are populated at incident-creation time regardless of these two columns — confirmed live
+ * (see chat) that dashboard totals were identical before and after this backfill ran.
  * ============================================================================================
  */
 

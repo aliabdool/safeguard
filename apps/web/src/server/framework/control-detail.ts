@@ -66,9 +66,11 @@ export function buildLatestScoresByPropertyDimension(
   return result;
 }
 
-/** A controlId path segment that can't possibly be a real Catalyst ROWID (empty, or containing a
- * character that would break the interpolated ZCQL criteria string) — checked before any query so
- * a malformed URL fails fast with a plain "not found" instead of a ZCQL syntax error. */
+/** A controlId path segment that can't possibly be a real Catalyst ROWID (empty) — checked before
+ * any query so a malformed URL fails fast with a plain "not found" instead of a wasted round trip.
+ * This is a fast-path UX check only, not the security boundary: every query built from controlId
+ * goes through zcqlString() (see lib/catalyst/zcql-escape.ts), which safely escapes any character
+ * — including a quote — so this function no longer needs to (and doesn't) reject on one. */
 export function isValidControlId(controlId: string): boolean {
-  return controlId.trim().length > 0 && !controlId.includes("'");
+  return controlId.trim().length > 0;
 }

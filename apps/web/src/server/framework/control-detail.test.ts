@@ -104,7 +104,8 @@ describe("isValidControlId", () => {
     expect(isValidControlId("   ")).toBe(false);
   });
 
-  it("rejects a value containing a single quote (would break the interpolated ZCQL criteria)", () => {
-    expect(isValidControlId("abc' or '1'='1")).toBe(false);
+  it("accepts a value containing a single quote — no longer this function's concern, since every "
+    + "query built from controlId is escaped via zcqlString() at the call site", () => {
+    expect(isValidControlId("abc' or '1'='1")).toBe(true);
   });
 });

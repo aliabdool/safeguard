@@ -7,7 +7,9 @@ import { z } from "zod";
 import type { ActionResult } from "@/app/(auth)/actions";
 import { catalystAppFromHeaders, type CatalystRow } from "@/lib/catalyst/app";
 import { toZcqlDateTime } from "@/lib/catalyst/zcql-datetime";
+import { logDebugError } from "@/lib/debug-log";
 import { writeAuditLog } from "@/server/audit-log";
+import { buildExistingAssessmentCriteria } from "@/server/framework/assessment-criteria";
 import { isCriticalGap } from "@/server/framework/maturity";
 import { hasPropertyAccess, requireRole } from "@/server/permissions";
 
@@ -68,57 +70,74 @@ export async function createControlAssessmentAction(
   // under a unique index) a null department_id can't be relied on to dedupe via a criteria filter
   // alone either — select-then-write instead, same tradeoff as the incident-number allocator
   // (acceptable race window for v1 assessment-entry volume).
-  const departmentClause = departmentId
-    ? `ControlAssessments.department_id = '${departmentId}'`
-    : `ControlAssessments.department_id is null`;
-  const existingRows = (await datastore.table("ControlAssessments").getRows({
-    criteria:
-      `ControlAssessments.control_id = '${data.controlId}' and ` +
-      `ControlAssessments.property_id = '${data.propertyId}' and ` +
-      `${departmentClause} and ` +
-      `ControlAssessments.period_label = '${data.periodLabel}' and ` +
-      `ControlAssessments.dimension = '${data.dimension}'`,
-    maxRows: 1,
-  })) as CatalystRow[];
-  const existing = existingRows[0];
+  //
+  // Everything Catalyst-facing below is wrapped in one try/catch: periodLabel and notes are free
+  // text an assessor can type anything into, and even with buildExistingAssessmentCriteria's
+  // escaping (see server/framework/assessment-criteria.ts — previously an unescaped apostrophe in
+  // periodLabel broke this exact query and 500'd the whole page, see chat) a live Data Store call
+  // can still fail for reasons a form can't predict client-side (a transient Catalyst error, a
+  // concurrency-limit 429). None of that should ever surface as Next's generic "Server Components
+  // render" crash — the assessor's already-entered values live in the form's own DOM state (not
+  // reset by a failed action, since the page never navigates away), so a friendly inline error and
+  // a server-side log line is the whole recovery story needed.
+  try {
+    const existingRows = (await datastore.table("ControlAssessments").getRows({
+      criteria: buildExistingAssessmentCriteria({
+        controlId: data.controlId,
+        propertyId: data.propertyId,
+        departmentId,
+        periodLabel: data.periodLabel,
+        dimension: data.dimension,
+      }),
+      maxRows: 1,
+    })) as CatalystRow[];
+    const existing = existingRows[0];
 
-  if (existing) {
-    await datastore.table("ControlAssessments").updateRow({
-      ROWID: existing.ROWID,
-      maturity_score: data.maturityScore,
-      is_critical_gap: criticalGap,
-      assessed_by: ctx.userId,
-      assessed_at: toZcqlDateTime(new Date()),
-      notes: data.notes ?? null,
+    if (existing) {
+      await datastore.table("ControlAssessments").updateRow({
+        ROWID: existing.ROWID,
+        maturity_score: data.maturityScore,
+        is_critical_gap: criticalGap,
+        assessed_by: ctx.userId,
+        assessed_at: toZcqlDateTime(new Date()),
+        notes: data.notes ?? null,
+      });
+    } else {
+      await datastore.table("ControlAssessments").insertRow({
+        control_id: data.controlId,
+        property_id: data.propertyId,
+        department_id: departmentId,
+        period_label: data.periodLabel,
+        dimension: data.dimension,
+        maturity_score: data.maturityScore,
+        is_critical_gap: criticalGap,
+        assessed_by: ctx.userId,
+        assessed_at: toZcqlDateTime(new Date()),
+        notes: data.notes ?? null,
+      });
+    }
+
+    await writeAuditLog({
+      actorId: ctx.userId,
+      eventType: "score_changed",
+      entityType: "ControlAssessments",
+      entityId: data.controlId,
+      propertyId: data.propertyId,
+      departmentId: data.departmentId || null,
+      newValue: {
+        dimension: data.dimension,
+        maturityScore: data.maturityScore,
+        isCriticalGap: criticalGap,
+      },
     });
-  } else {
-    await datastore.table("ControlAssessments").insertRow({
-      control_id: data.controlId,
-      property_id: data.propertyId,
-      department_id: departmentId,
-      period_label: data.periodLabel,
-      dimension: data.dimension,
-      maturity_score: data.maturityScore,
-      is_critical_gap: criticalGap,
-      assessed_by: ctx.userId,
-      assessed_at: toZcqlDateTime(new Date()),
-      notes: data.notes ?? null,
-    });
+  } catch (err) {
+    logDebugError("CONTROL_ASSESSMENT_SAVE_ERROR:", err);
+    return {
+      error:
+        "We couldn't save this assessment. Your entries have been preserved. Please review the " +
+        "highlighted fields or try again.",
+    };
   }
-
-  await writeAuditLog({
-    actorId: ctx.userId,
-    eventType: "score_changed",
-    entityType: "ControlAssessments",
-    entityId: data.controlId,
-    propertyId: data.propertyId,
-    departmentId: data.departmentId || null,
-    newValue: {
-      dimension: data.dimension,
-      maturityScore: data.maturityScore,
-      isCriticalGap: criticalGap,
-    },
-  });
 
   revalidatePath(`/framework/controls/${data.controlId}`);
   return {};

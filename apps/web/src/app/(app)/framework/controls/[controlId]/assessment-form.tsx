@@ -7,7 +7,6 @@ import { createControlAssessmentAction } from "../actions";
 import type { ActionResult } from "@/app/(auth)/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -33,6 +32,17 @@ const DIMENSIONS: { value: AssessmentDimension; label: string }[] = [
   { value: "effectiveness", label: "Effectiveness" },
 ];
 
+const QUARTERS = ["Full year", "Q1", "Q2", "Q3", "Q4"] as const;
+
+/** Derives the stored period_label (e.g. "FY2027-Q2", or "FY2027" for the full year) from the two
+ * controlled dropdowns below — the same shape createControlAssessmentAction has always accepted,
+ * so no server-side change is needed. Users no longer type this string themselves (see chat:
+ * arbitrary free text was both a poor UX and, until buildExistingAssessmentCriteria's escaping,
+ * an input-quality risk). */
+function derivePeriodLabel(financialYear: string, quarter: (typeof QUARTERS)[number]): string {
+  return quarter === "Full year" ? financialYear : `${financialYear}-${quarter}`;
+}
+
 export function AssessmentForm({
   controlId,
   control,
@@ -40,6 +50,7 @@ export function AssessmentForm({
   departments,
   isLifeSafetyCritical,
   isLegal,
+  financialYears,
   existingScoresByProperty,
 }: {
   controlId: string;
@@ -48,6 +59,9 @@ export function AssessmentForm({
   departments: Array<{ id: string; name: string }>;
   isLifeSafetyCritical: boolean;
   isLegal: boolean;
+  /** Most recent FY first, e.g. ["FY2027", "FY2026", "FY2025", "FY2024"] — see recentFinancialYears()
+   * in server/kpi/period.ts, computed server-side so the client never has to re-derive the FY rule. */
+  financialYears: string[];
   /** propertyId -> dimension -> latest known score, so the guided form can show real progress
    * instead of a generic "0 of 4" every time (see chat §D-F: "assessment progress tracking"). */
   existingScoresByProperty: Record<string, Record<string, number>>;
@@ -65,6 +79,10 @@ export function AssessmentForm({
   const [applicability, setApplicability] = useState<"applicable" | "not_applicable">(
     "applicable",
   );
+  const [selectedFy, setSelectedFy] = useState<string>(financialYears[0] ?? "");
+  const [selectedQuarter, setSelectedQuarter] =
+    useState<(typeof QUARTERS)[number]>("Full year");
+  const periodLabel = derivePeriodLabel(selectedFy, selectedQuarter);
 
   const existingForProperty = existingScoresByProperty[selectedPropertyId] ?? {};
   const completedCount = DIMENSIONS.filter((d) => existingForProperty[d.value] != null).length;
@@ -203,21 +221,52 @@ export function AssessmentForm({
           />
           <input type="hidden" name="isLegal" value={isLegal ? "on" : ""} />
 
-          <div className="grid grid-cols-2 gap-2">
-            <Select name="departmentId">
-              <SelectTrigger>
-                <SelectValue placeholder="Department (property-wide if blank)" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input name="periodLabel" placeholder="Period, e.g. FY2026-Q2" required />
+          <Select name="departmentId">
+            <SelectTrigger>
+              <SelectValue placeholder="Department (property-wide if blank)" />
+            </SelectTrigger>
+            <SelectContent>
+              {departments.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="grid gap-1">
+            <Label className="text-xs">Assessment period</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Select value={selectedFy || undefined} onValueChange={setSelectedFy}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Financial year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {financialYears.map((fy) => (
+                    <SelectItem key={fy} value={fy}>
+                      {fy}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={selectedQuarter}
+                onValueChange={(v) => setSelectedQuarter(v as (typeof QUARTERS)[number])}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Period" />
+                </SelectTrigger>
+                <SelectContent>
+                  {QUARTERS.map((q) => (
+                    <SelectItem key={q} value={q}>
+                      {q}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          <input type="hidden" name="periodLabel" value={periodLabel} />
 
           <fieldset className="grid grid-cols-5 gap-1.5">
             <legend className="sr-only">Maturity score</legend>
@@ -267,7 +316,7 @@ export function AssessmentForm({
           <Button
             type="submit"
             size="sm"
-            disabled={pending || !selectedPropertyId || draftScore == null}
+            disabled={pending || !selectedPropertyId || !selectedFy || draftScore == null}
             className="w-fit"
           >
             {pending ? "Saving..." : "Save assessment"}
